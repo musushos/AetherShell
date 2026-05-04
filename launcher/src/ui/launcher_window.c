@@ -245,32 +245,50 @@ venom_launcher_window_class_init (VenomLauncherWindowClass *klass)
     obj_class->finalize = venom_launcher_window_finalize;
 }
 
-static gboolean
-is_wayland_session(void)
+static void
+set_layer_shell_monitor (GtkWindow *win)
 {
-    GdkDisplay *display = gdk_display_get_default();
-    if (display) {
-        const char *name = G_OBJECT_TYPE_NAME(display);
-        if (name && g_str_has_prefix(name, "GdkWayland")) {
-            return TRUE;
-        }
+    GdkDisplay *display = gdk_display_get_default ();
+    if (!display) {
+        g_warning ("Launcher: no GDK display available for layer-shell monitor");
+        return;
     }
-    return FALSE;
+
+    GdkMonitor *monitor = gdk_display_get_primary_monitor (display);
+    if (!monitor && gdk_display_get_n_monitors (display) > 0)
+        monitor = gdk_display_get_monitor (display, 0);
+
+    if (!monitor) {
+        g_warning ("Launcher: no monitor available for layer-shell");
+        return;
+    }
+
+    GdkRectangle geometry;
+    gdk_monitor_get_geometry (monitor, &geometry);
+    gtk_widget_set_size_request (GTK_WIDGET (win), geometry.width, geometry.height);
+    gtk_layer_set_monitor (win, monitor);
 }
 
 static void
 venom_launcher_window_init (VenomLauncherWindow *self)
 {
     GtkWindow *win = GTK_WINDOW (self);
+    gboolean layer_shell_supported = gtk_layer_is_supported ();
 
-    if (is_wayland_session()) {
+    if (layer_shell_supported) {
         gtk_layer_init_for_window (win);
         gtk_layer_set_namespace (win, "launcher");
+        set_layer_shell_monitor (win);
         gtk_layer_set_layer (win, GTK_LAYER_SHELL_LAYER_OVERLAY);
         gtk_layer_set_anchor (win, GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
         gtk_layer_set_anchor (win, GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
         gtk_layer_set_anchor (win, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
         gtk_layer_set_anchor (win, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
+        gtk_layer_set_margin (win, GTK_LAYER_SHELL_EDGE_LEFT, 0);
+        gtk_layer_set_margin (win, GTK_LAYER_SHELL_EDGE_RIGHT, 0);
+        gtk_layer_set_margin (win, GTK_LAYER_SHELL_EDGE_TOP, 0);
+        gtk_layer_set_margin (win, GTK_LAYER_SHELL_EDGE_BOTTOM, 0);
+        gtk_layer_set_exclusive_zone (win, -1);
         gtk_layer_set_keyboard_mode (win, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
     } else {
         /* X11 fallback */
