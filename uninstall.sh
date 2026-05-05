@@ -19,6 +19,7 @@ packages=(
     aether-panel
     aether-basilisk
     aether-aetherlock
+    aether-aetheridle
     aether-vpanel
 )
 
