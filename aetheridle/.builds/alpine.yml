@@ -1,0 +1,16 @@
+image: alpine/edge
+packages:
+  - meson
+  - wayland-dev
+  - wayland-protocols
+  - scdoc
+sources:
+  - https://github.com/swaywm/aetheridle
+tasks:
+  - setup: |
+      cd aetheridle
+      meson build
+  - build: |
+      cd aetheridle
+      ninja -C build
+

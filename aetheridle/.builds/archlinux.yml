@@ -1,0 +1,16 @@
+image: archlinux
+packages:
+  - meson
+  - wayland
+  - wayland-protocols
+  - scdoc
+sources:
+  - https://github.com/swaywm/aetheridle
+tasks:
+  - setup: |
+      cd aetheridle
+      meson setup -Dauto_features=enabled build
+  - build: |
+      cd aetheridle
+      ninja -C build
+
