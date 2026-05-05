@@ -5,10 +5,19 @@
 
 static GtkWidget *control_center_window = NULL;
 
+static gchar *find_vpanel_asset(const char *filename)
+{
+    gchar *path = g_build_filename(g_get_current_dir(), filename, NULL);
+    if (g_file_test(path, G_FILE_TEST_EXISTS)) return path;
+    g_free(path);
+
+    return g_build_filename("/usr/share/vpanel", filename, NULL);
+}
+
 static GtkWidget *create_control_center_icon(void)
 {
     GtkWidget *image;
-    gchar *icon_path = g_build_filename(g_get_current_dir(), "control-center-icon.svg", NULL);
+    gchar *icon_path = find_vpanel_asset("control-center-icon.svg");
     GError *error = NULL;
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(icon_path, 22, 22, TRUE, &error);
 

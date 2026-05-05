@@ -1,19 +1,20 @@
 #!/bin/bash
 
 # Configuration
-BASE_DIR="/home/x/Work/Aether/AetherShell"
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_DIR="${BASE_DIR}/packages"
 BUILD_DIR="${BASE_DIR}/pkg_build"
 
 mkdir -p "${PKG_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-projects=("auth" "desktop" "AetherDock" "launcher" "osd-notify" "panel")
+projects=("auth" "desktop" "AetherDock" "launcher" "osd-notify" "panel" "basilisk" "aetherlock" "vpanel")
 
 for proj in "${projects[@]}"; do
     echo "--- Packaging ${proj} ---"
     PROJ_PATH="${BASE_DIR}/${proj}"
     STAGING="${BUILD_DIR}/${proj}_pkg"
+    PKG_NAME="aether-${proj,,}"
     
     # Cleanup staging
     rm -rf "${STAGING}"
@@ -66,11 +67,27 @@ for proj in "${projects[@]}"; do
         mkdir -p "${STAGING}/usr/bin/resources/images"
         cp "${PROJ_PATH}/style.css"        "${STAGING}/usr/bin/resources/style.css"
         cp "${PROJ_PATH}/images/"*         "${STAGING}/usr/bin/resources/images/"
+    elif [ "${proj}" == "basilisk" ]; then
+        cp "${PROJ_PATH}/basilisk" "${STAGING}/usr/bin/"
+    elif [ "${proj}" == "aetherlock" ]; then
+        DESTDIR="${STAGING}" meson install -C "${PROJ_PATH}/build" --no-rebuild
+    elif [ "${proj}" == "vpanel" ]; then
+        make DESTDIR="${STAGING}" install
+
+        # Shared assets live under /usr/share to avoid filename conflicts in /usr/bin.
+        mkdir -p "${STAGING}/usr/share/vpanel"
+        cp "${PROJ_PATH}/style.css"                 "${STAGING}/usr/share/vpanel/style.css"
+        cp "${PROJ_PATH}/control-center-icon.svg"   "${STAGING}/usr/share/vpanel/control-center-icon.svg"
+        cp "${PROJ_PATH}/launchpad.svg"             "${STAGING}/usr/share/vpanel/launchpad.svg"
+
+        # plugin-sandbox searches beside vpanel or in PATH, while Makefile installs
+        # the host under /usr/lib/vpanel. Keep both locations reachable.
+        ln -sf "../lib/vpanel/vpanel-plugin-host" "${STAGING}/usr/bin/vpanel-plugin-host"
     fi
     
     # 3. Create control file
     cat <<EOF > "${STAGING}/DEBIAN/control"
-Package: aether-${proj}
+Package: ${PKG_NAME}
 Version: 0.1.0
 Section: utils
 Priority: optional
@@ -80,7 +97,7 @@ Description: AetherShell component - ${proj}
 EOF
 
     # 4. Build DEB
-    dpkg-deb --build "${STAGING}" "${PKG_DIR}/aether-${proj}.deb"
+    dpkg-deb --build "${STAGING}" "${PKG_DIR}/${PKG_NAME}.deb"
 done
 
 echo "--- Finished packaging all projects ---"

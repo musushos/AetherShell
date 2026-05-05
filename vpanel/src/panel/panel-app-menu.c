@@ -260,6 +260,10 @@ static gchar *resolve_asset_path(const char *filename)
     if (g_file_test(path, G_FILE_TEST_EXISTS)) return path;
     g_free(path);
 
+    path = g_build_filename("/usr/share/vpanel", filename, NULL);
+    if (g_file_test(path, G_FILE_TEST_EXISTS)) return path;
+    g_free(path);
+
     exe = g_file_read_link("/proc/self/exe", NULL);
     if (!exe) return NULL;
 

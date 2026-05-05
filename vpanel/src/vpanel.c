@@ -11,6 +11,15 @@
 #include "panel-layout.h"
 #include "window-backend.h"
 
+static gchar *find_vpanel_asset(const char *filename)
+{
+    gchar *path = g_build_filename(g_get_current_dir(), filename, NULL);
+    if (g_file_test(path, G_FILE_TEST_EXISTS)) return path;
+    g_free(path);
+
+    return g_build_filename("/usr/share/vpanel", filename, NULL);
+}
+
 GtkWidget* create_venom_panel(void) {
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
@@ -92,7 +101,7 @@ GtkWidget* create_venom_panel(void) {
 
     /* Main CSS */
     GtkCssProvider *p = gtk_css_provider_new();
-    gchar *css_p = g_build_filename(g_get_current_dir(), "style.css", NULL);
+    gchar *css_p = find_vpanel_asset("style.css");
     gtk_css_provider_load_from_path(p, css_p, NULL);
     g_free(css_p);
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(p), 800);
