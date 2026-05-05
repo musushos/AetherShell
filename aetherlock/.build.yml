@@ -1,0 +1,23 @@
+image: alpine/edge
+packages:
+  - meson
+  - cairo-dev
+  - wayland-dev
+  - wayland-protocols
+  - libxkbcommon-dev
+  - gdk-pixbuf-dev
+  - linux-pam-dev
+  - scdoc
+sources:
+  - https://github.com/vaxp/aetherlock
+tasks:
+  - setup: |
+      cd aetherlock
+      meson build
+  - build: |
+      cd aetherlock
+      ninja -C build
+  - build-no-pam: |
+      cd aetherlock
+      meson configure build -Dpam=disabled
+      ninja -C build
