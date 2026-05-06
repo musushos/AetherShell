@@ -8,6 +8,7 @@
 #define BASILISK_H
 
 #include <gtk/gtk.h>
+#include <math.h>
 #include <gdk/gdkx.h>
 #include <gdk/gdkwayland.h>
 #include <gio/gio.h>
@@ -51,14 +52,24 @@ typedef struct {
 
 // Global state
 typedef struct {
+    /* ── basilisk window (نافذة Cairo الجديدة) ── */
+    gboolean basilisk_visible;
+
+    /* ── Apps Grid window (النافذة القديمة) ── */
     GtkWidget *window;
     GtkWidget *search_entry;
     GtkWidget *app_grid;
     GtkWidget *category_bar;
     GtkWidget *scroll_window;
+
+    /* ── D-Bus ── */
     GDBusConnection *dbus_conn;
     guint dbus_owner_id;
+
+    /* ── App cache ── */
     GList *app_cache;
+
+    /* ── حالة النافذة القديمة ── */
     gboolean visible;
     gboolean search_hint_visible;
     AppCategory current_category;

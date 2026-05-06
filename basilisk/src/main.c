@@ -10,6 +10,7 @@
 #include "basilisk.h"
 #include "window.h"
 #include "search.h"
+#include "basilisk_window.h"
 
 // Global State
 BasiliskState *state = NULL;
@@ -30,26 +31,29 @@ static void handle_method_call(
 {
     (void)c; (void)s; (void)o; (void)i; (void)u;
     
-    g_print("📨 D-Bus method called: %s (visible=%d)\n", m, state->visible);
+    g_print("📨 D-Bus method called: %s (basilisk=%d grid=%d)\n",
+            m, state->basilisk_visible, state->visible);
     
     // Show or Toggle when hidden
-    if (g_strcmp0(m, "Show") == 0 || (g_strcmp0(m, "Toggle") == 0 && !state->visible)) {
-        extern void window_show(void);
-        window_show();
+    if (g_strcmp0(m, "Show") == 0 ||
+        (g_strcmp0(m, "Toggle") == 0 && !state->basilisk_visible && !state->visible)) {
+        basilisk_show();
     }
     // Hide or Toggle when visible
-    else if (g_strcmp0(m, "Hide") == 0 || (g_strcmp0(m, "Toggle") == 0 && state->visible)) {
-        extern void window_hide(void);
+    else if (g_strcmp0(m, "Hide") == 0 ||
+             (g_strcmp0(m, "Toggle") == 0 &&
+              (state->basilisk_visible || state->visible))) {
+        basilisk_hide();
         window_hide();
     }
-    // Search
+    // Search — show basilisk with pre-filled text
     else if (g_strcmp0(m, "Search") == 0) {
         const gchar *query;
         g_variant_get(p, "(&s)", &query);
-        
-        gtk_entry_set_text(GTK_ENTRY(state->search_entry), query);
-        extern void window_show(void);
-        window_show();
+        basilisk_show();
+        // نقل النص إلى نافذة الـ grid
+        extern void window_show_with_search(const gchar *query);
+        window_show_with_search(query);
     }
     
     g_dbus_method_invocation_return_value(inv, NULL);
@@ -87,7 +91,7 @@ static void on_bus_acquired(GDBusConnection *conn, const gchar *name, gpointer d
 
 int main(int argc, char *argv[]) {
     g_print("🚀 ════════════════════════════════════════════════════════════\n");
-    g_print("🚀 Venom Basilisk - Spotlight Search\n");
+    g_print("🚀 Venom Basilisk - basilisk Search\n");
     g_print("🚀 ════════════════════════════════════════════════════════════\n");
     
     gtk_init(&argc, &argv);
@@ -96,11 +100,12 @@ int main(int argc, char *argv[]) {
     state = g_new0(BasiliskState, 1);
     state->visible = FALSE;
     
-    // Initialize modules (build window FIRST)
-    search_init();
-    window_init();
+    // Initialize modules
+    search_init();       /* تحميل قائمة التطبيقات */
+    window_init();       /* بناء نافذة الـ grid (مخفية) */
+    basilisk_init();    /* بناء نافذة basilisk (Cairo) */
     
-    g_print("🔍 Window built\n");
+    g_print("🔍 Window + basilisk built\n");
     
     // D-Bus
     state->dbus_owner_id = g_bus_own_name(
@@ -117,8 +122,7 @@ int main(int argc, char *argv[]) {
     }
     
     if (show_on_start) {
-        extern void window_show(void);
-        window_show();
+        basilisk_show();
     }
     
     g_print("✅ Ready. Use D-Bus Toggle or --show\n");

@@ -490,14 +490,22 @@ void window_show(void) {
         
         window_refresh_grid();
         
-        // Center on screen
+        // Center on screen (Wayland-safe)
         GdkDisplay *display = gdk_display_get_default();
         GdkMonitor *monitor = gdk_display_get_primary_monitor(display);
-        GdkRectangle geometry;
-        gdk_monitor_get_geometry(monitor, &geometry);
-        
-        gint x = geometry.x + (geometry.width - WINDOW_WIDTH) / 2;
-        gint y = geometry.y + (geometry.height - WINDOW_HEIGHT) / 2;
+        if (!monitor && gdk_display_get_n_monitors(display) > 0)
+            monitor = gdk_display_get_monitor(display, 0);
+
+        gint x, y;
+        if (monitor) {
+            GdkRectangle geometry;
+            gdk_monitor_get_geometry(monitor, &geometry);
+            x = geometry.x + (geometry.width  - WINDOW_WIDTH)  / 2;
+            y = geometry.y + (geometry.height - WINDOW_HEIGHT) / 2;
+        } else {
+            gtk_window_set_position(GTK_WINDOW(state->window), GTK_WIN_POS_CENTER);
+            x = 0; y = 0;
+        }
         
         gtk_window_move(GTK_WINDOW(state->window), x, y);
         gtk_widget_show_all(state->window);
@@ -514,6 +522,16 @@ void window_hide(void) {
     if (state->visible) {
         gtk_widget_hide(state->window);
         state->visible = FALSE;
+    }
+}
+
+/* فتح نافذة Grid مع نص بحث مسبق (يُستدعى من basilisk) */
+void window_show_with_search(const gchar *query) {
+    window_show();
+    if (query && query[0] != '\0') {
+        set_search_hint_visible(FALSE);
+        gtk_entry_set_text(GTK_ENTRY(state->search_entry), query);
+        window_refresh_grid();
     }
 }
 

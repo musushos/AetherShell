@@ -218,31 +218,31 @@ void ai_chat_show(const gchar *initial_query) {
         gtk_css_provider_load_from_data(css,
             /* Main window */
             "#ai-window {"
-            "  background: rgba(0, 0, 0, 0.53);"
+            "  background: rgba(0, 0, 0, 0.300);"
             "  border-radius: 16px;"
-            "  border: 2px solid #00d4ff;"
+            "  border: 2px solid #000000ff;"
             "  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);"
             "}"
             
             /* Main container */
             "#ai-main-box {"
-            "  background: transparent;"
+            "  background: rgba(0, 0, 0, 0.300);"
             "}"
             
             /* Header */
             "#ai-header {"
-            "  background: rgba(0, 212, 255, 0.1);"
+            "  background: rgba(0, 0, 0, 0);"
             "  border-radius: 12px 12px 0 0;"
             "  padding: 12px 16px;"
             "}"
             ".ai-title {"
             "  font-size: 22px;"
             "  font-weight: bold;"
-            "  color: #00d4ff;"
+            "  color: #ffffffff;"
             "}"
             ".ai-beta {"
-            "  background: #00d4ff;"
-            "  color: #1a1a2e;"
+            "  background: rgba(0, 0, 0, 0.44);"
+            "  color: #ffffffff;"
             "  padding: 4px 12px;"
             "  border-radius: 12px;"
             "  font-size: 11px;"
@@ -252,15 +252,15 @@ void ai_chat_show(const gchar *initial_query) {
             /* Entry */
             "#ai-entry {"
             "  background: rgba(255, 255, 255, 0.08);"
-            "  border: 2px solid rgba(0, 212, 255, 0.4);"
+            "  border: 1px solid rgba(0, 0, 0, 1);"
             "  border-radius: 10px;"
             "  padding: 14px 16px;"
             "  color: #ffffff;"
             "  font-size: 15px;"
-            "  caret-color: #00d4ff;"
+            "  caret-color: rgba(0, 0, 0, 0);"
             "}"
             "#ai-entry:focus {"
-            "  border-color: #00d4ff;"
+            "  border-color: rgba(0, 0, 0, 0);"
             "  background: rgba(255, 255, 255, 0.12);"
             "}"
             
@@ -299,7 +299,7 @@ void ai_chat_show(const gchar *initial_query) {
     
     // Window
     data->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(data->window), "Admiral AI");
+    gtk_window_set_title(GTK_WINDOW(data->window), "VAXP AI");
     gtk_window_set_default_size(GTK_WINDOW(data->window), 650, 480);
     gtk_window_set_position(GTK_WINDOW(data->window), GTK_WIN_POS_CENTER);
     gtk_window_set_decorated(GTK_WINDOW(data->window), FALSE);
@@ -321,12 +321,12 @@ void ai_chat_show(const gchar *initial_query) {
     // Header
     GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     gtk_widget_set_name(header, "ai-header");
-    GtkWidget *icon = gtk_image_new_from_icon_name("preferences-system-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
-    GtkWidget *title = gtk_label_new("Admiral AI");
+    //GtkWidget *icon = gtk_image_new_from_icon_name("preferences-system-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+    GtkWidget *title = gtk_label_new("VAXP AI");
     gtk_style_context_add_class(gtk_widget_get_style_context(title), "ai-title");
     GtkWidget *beta = gtk_label_new("BETA");
     gtk_style_context_add_class(gtk_widget_get_style_context(beta), "ai-beta");
-    gtk_box_pack_start(GTK_BOX(header), icon, FALSE, FALSE, 0);
+    //gtk_box_pack_start(GTK_BOX(header), icon, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(header), beta, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(main_box), header, FALSE, FALSE, 0);
@@ -339,7 +339,7 @@ void ai_chat_show(const gchar *initial_query) {
     // Entry
     data->entry = gtk_entry_new();
     gtk_widget_set_name(data->entry, "ai-entry");
-    gtk_entry_set_placeholder_text(GTK_ENTRY(data->entry), "Ask Admiral anything...");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(data->entry), "Ask Vaxp AI anything...");
     if (initial_query) {
         gtk_entry_set_text(GTK_ENTRY(data->entry), initial_query);
     }
@@ -367,7 +367,7 @@ void ai_chat_show(const gchar *initial_query) {
     GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_name(footer, "ai-footer");
     data->spinner = gtk_spinner_new();
-    data->status_label = gtk_label_new("Press Enter to ask Admiral");
+    data->status_label = gtk_label_new("Press Enter to ask Vaxp AI...");
     gtk_widget_set_name(data->status_label, "ai-status");
     gtk_box_pack_start(GTK_BOX(footer), data->spinner, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(footer), data->status_label, FALSE, FALSE, 0);

@@ -11,6 +11,7 @@
 
 void window_init(void);
 void window_show(void);
+void window_show_with_search(const gchar *query);
 void window_hide(void);
 void window_toggle(void);
 void window_apply_css(void);
