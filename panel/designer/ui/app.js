@@ -771,6 +771,8 @@ function generateWindowCSS() {
       `${winSel} switch { background-color: ${element}; }`,
       `${winSel} scale highlight { background-color: ${accent}; }`,
       `${winSel} switch:checked { background-color: ${accent}; }`,
+      `${winSel} .active-cyan { color: ${accent}; background-color: ${rgba(s.accentColor, 15)}; border-color: ${rgba(s.accentColor, 30)}; box-shadow: 0 0 12px ${rgba(s.accentColor, 15)}; }`,
+      `${winSel} .active-cyan-text { color: ${accent}; }`,
       ''
     );
   }

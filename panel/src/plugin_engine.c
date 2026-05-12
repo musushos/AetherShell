@@ -505,6 +505,23 @@ static GString *generate_theme_css(const AetherPluginTheme *t,
         append_rgba(css, t->root_r, t->root_g, t->root_b, t->root_a);
         g_string_append(css, "; }\n");
 
+        /* Control Center active buttons override */
+        g_string_append_printf(css,
+            "#%s .active-cyan { color: ", wid);
+        append_rgba(css, t->root_r, t->root_g, t->root_b, t->root_a);
+        g_string_append(css, "; background-color: ");
+        append_rgba(css, t->root_r, t->root_g, t->root_b, 0.15);
+        g_string_append(css, "; border-color: ");
+        append_rgba(css, t->root_r, t->root_g, t->root_b, 0.3);
+        g_string_append(css, "; box-shadow: 0 0 12px ");
+        append_rgba(css, t->root_r, t->root_g, t->root_b, 0.15);
+        g_string_append(css, "; }\n");
+
+        g_string_append_printf(css,
+            "#%s .active-cyan-text { color: ", wid);
+        append_rgba(css, t->root_r, t->root_g, t->root_b, t->root_a);
+        g_string_append(css, "; }\n");
+
         /* Panel bar widget hover tint — uses plugin CSS class (.aether-<id>) */
         g_string_append_printf(css,
             ".%s button:hover { background-color: rgba(%d,%d,%d,0.12); }\n",

@@ -692,18 +692,22 @@ static void on_pulse_volume_changed(int percent, gboolean muted, gpointer user_d
     updating_from_pulse = FALSE;
 }
 
+GtkWidget *perf_btns_widgets[3];
 GtkWidget *perf_icons_widgets[3];
 GtkWidget *perf_labels_widgets[3];
 const char *profile_names[] = {"power-saver", "balanced", "performance"};
 
 static void update_perf_ui(const char *profile) {
     for (int i = 0; i < 3; i++) {
+        GtkStyleContext *ctx_btn = gtk_widget_get_style_context(perf_btns_widgets[i]);
         GtkStyleContext *ctx_icon = gtk_widget_get_style_context(perf_icons_widgets[i]);
         GtkStyleContext *ctx_label = gtk_widget_get_style_context(perf_labels_widgets[i]);
         if (g_strcmp0(profile_names[i], profile) == 0) {
+            gtk_style_context_add_class(ctx_btn, "active-cyan");
             gtk_style_context_add_class(ctx_icon, "active-cyan-text");
             gtk_style_context_add_class(ctx_label, "active-cyan-text");
         } else {
+            gtk_style_context_remove_class(ctx_btn, "active-cyan");
             gtk_style_context_remove_class(ctx_icon, "active-cyan-text");
             gtk_style_context_remove_class(ctx_label, "active-cyan-text");
         }
@@ -914,6 +918,7 @@ static GtkWidget* create_controls_page() {
         g_object_set_data(G_OBJECT(btn), "profile", (gpointer)profile_names[i]);
         g_signal_connect(btn, "clicked", G_CALLBACK(on_perf_btn_clicked), NULL);
 
+        perf_btns_widgets[i] = btn;
         gtk_box_pack_start(GTK_BOX(box_perf_btns), btn, FALSE, FALSE, 0);
     }
     gtk_box_pack_start(GTK_BOX(card_perf), box_perf_btns, FALSE, FALSE, 0);

@@ -94,47 +94,47 @@
 
 /* Volume — cyan accent */
 static const AetherPluginTheme _theme_volume_data =
-    AETHER_THEME_DARK("volume-mixer-window", "mixer-outer", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("volume-mixer-window", "mixer-outer", 0.0, 0.898, 1.0, 300);
 static const AetherPluginTheme *_get_theme_volume(void) { return &_theme_volume_data; }
 
 /* Microphone — red accent */
 static const AetherPluginTheme _theme_mic_data =
-    AETHER_THEME_DARK("mic-mixer-window", "mic-mixer-outer", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("mic-mixer-window", "mic-mixer-outer", 1.0, 0.266, 0.266, 300);
 static const AetherPluginTheme *_get_theme_mic(void) { return &_theme_mic_data; }
 
 /* Wi-Fi — light-blue accent */
 static const AetherPluginTheme _theme_wifi_data =
-    AETHER_THEME_DARK("wifi-indicator-window", "wifi-popup-outer", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("wifi-indicator-window", "wifi-popup-outer", 0.309, 0.764, 0.968, 300);
 static const AetherPluginTheme *_get_theme_wifi(void) { return &_theme_wifi_data; }
 
 /* Bluetooth — indigo-blue accent */
 static const AetherPluginTheme _theme_bt_data =
-    AETHER_THEME_DARK("bt-indicator-window", "wifi-popup-outer", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("bt-indicator-window", "wifi-popup-outer", 0.266, 0.541, 1.0, 300);
 static const AetherPluginTheme *_get_theme_bt(void) { return &_theme_bt_data; }
 
 /* Battery — green accent */
 static const AetherPluginTheme _theme_battery_data =
-    AETHER_THEME_DARK("battery-indicator-window", "battery-popup-outer", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("battery-indicator-window", "battery-popup-outer", 0.411, 0.941, 0.682, 300);
 static const AetherPluginTheme *_get_theme_battery(void) { return &_theme_battery_data; }
 
 /* App Menu — neutral-white accent */
 static const AetherPluginTheme _theme_appmenu_data =
-    AETHER_THEME_DARK("app-menu-popover", "app-menu-box", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("app-menu-popover", "app-menu-box", 0.933, 0.933, 0.933, 300);
 static const AetherPluginTheme *_get_theme_appmenu(void) { return &_theme_appmenu_data; }
 
 /* Clock / Sidebar — cyan accent */
 static const AetherPluginTheme _theme_clock_data =
-    AETHER_THEME_DARK("sidebar", NULL, 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("sidebar", NULL, 0.0, 0.898, 1.0, 300);
 static const AetherPluginTheme *_get_theme_clock(void) { return &_theme_clock_data; }
 
 /* Notifications — purple accent */
 static const AetherPluginTheme _theme_notifs_data =
-    AETHER_THEME_DARK("notifications-popover", "main-box", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("notifications-popover", "main-box", 0.807, 0.576, 0.847, 300);
 static const AetherPluginTheme *_get_theme_notifs(void) { return &_theme_notifs_data; }
 
 /* Control Center — cyan accent (wider popup) */
 static const AetherPluginTheme _theme_cc_data =
-    AETHER_THEME_DARK("control-center-popover", "main-box", 0.0, 0.0, 0.0, 300);
+    AETHER_THEME_DARK("control-center-popover", "main-box", 0.0, 0.898, 1.0, 300);
 static const AetherPluginTheme *_get_theme_cc(void) { return &_theme_cc_data; }
 
 /* =========================================================================
