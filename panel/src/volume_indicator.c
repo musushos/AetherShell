@@ -335,6 +335,7 @@ static void on_vi_clicked(GtkButton *btn, gpointer user_data)
         gtk_widget_hide(mixer_window);
         mixer_visible = FALSE;
     } else {
+        panel_window_backend_align_popup(GTK_WINDOW(mixer_window), vi_btn, 300);
         gtk_widget_show_all(mixer_window);
         mixer_visible = TRUE;
     }

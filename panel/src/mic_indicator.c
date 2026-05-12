@@ -311,6 +311,7 @@ static void on_mi_clicked(GtkButton *btn, gpointer user_data)
         gtk_widget_hide(mic_mixer_window);
         mic_mixer_visible = FALSE;
     } else {
+        panel_window_backend_align_popup(GTK_WINDOW(mic_mixer_window), mi_btn, 300);
         gtk_widget_show_all(mic_mixer_window);
         mic_mixer_visible = TRUE;
     }

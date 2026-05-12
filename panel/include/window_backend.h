@@ -19,5 +19,6 @@ void panel_window_backend_set_margin(GtkWindow *window,
                                      GtkLayerShellEdge edge,
                                      gint margin);
 void panel_window_backend_auto_exclusive_zone_enable(GtkWindow *window);
+void panel_window_backend_align_popup(GtkWindow *popup, GtkWidget *relative_to, gint popup_width);
 
 #endif

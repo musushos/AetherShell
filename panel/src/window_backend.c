@@ -496,3 +496,47 @@ void panel_window_backend_auto_exclusive_zone_enable(GtkWindow *window) {
                          G_CALLBACK(on_x11_panel_size_allocate), NULL);
     }
 }
+
+void panel_window_backend_align_popup(GtkWindow *popup, GtkWidget *relative_to, gint popup_width) {
+    GtkAllocation alloc;
+    GdkRectangle monitor = {0};
+    GdkWindow *window;
+    GdkDisplay *display;
+    gint origin_x = 0;
+    gint popup_x;
+    gint popup_y;
+
+    if (!popup || !relative_to) return;
+    if (!gtk_widget_get_realized(relative_to)) return;
+
+    display = gtk_widget_get_display(relative_to);
+    window = gtk_widget_get_window(relative_to);
+    if (!display || !window) return;
+
+    GdkMonitor *m = gdk_display_get_monitor_at_window(display, window);
+    if (!m) m = gdk_display_get_primary_monitor(display);
+    if (!m && gdk_display_get_n_monitors(display) > 0) m = gdk_display_get_monitor(display, 0);
+    if (!m) return;
+
+    gdk_monitor_get_geometry(m, &monitor);
+    gtk_widget_get_allocation(relative_to, &alloc);
+    gdk_window_get_origin(window, &origin_x, NULL);
+
+    popup_x = origin_x + alloc.x + (alloc.width / 2) - (popup_width / 2);
+    popup_x = CLAMP(popup_x,
+                    monitor.x + 8,
+                    monitor.x + monitor.width - popup_width - 8);
+    popup_y = monitor.y; /* The popups already have a fixed TOP margin inside their css/logic if needed, but we align them based on the panel's edge. Actually, wait. We need to know if the panel is at the top or bottom! */
+
+    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_TOP, TRUE);
+    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
+    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_RIGHT, FALSE);
+    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_BOTTOM, FALSE);
+
+    /* On wayland layer shell, margins are relative to the monitor edge if anchors are set.
+       Since we anchored TOP and LEFT, we set margin_top and margin_left.
+       Because all popup windows assume they live near the top, we just use 0 (or rely on the popup's own TOP margin). 
+       Wait, let's just set LEFT margin! */
+    panel_window_backend_set_margin(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_LEFT, popup_x - monitor.x);
+}
+

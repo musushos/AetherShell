@@ -172,6 +172,7 @@ static void on_wi_clicked(GtkButton *btn, gpointer user_data)
         gtk_widget_hide(wifi_popup);
         wifi_popup_visible = FALSE;
     } else {
+        panel_window_backend_align_popup(GTK_WINDOW(wifi_popup), wi_btn, 300);
         gtk_widget_show_all(wifi_popup);
         wifi_popup_visible = TRUE;
     }

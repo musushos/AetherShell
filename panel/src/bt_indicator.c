@@ -148,6 +148,7 @@ static void on_bti_clicked(GtkButton *btn, gpointer user_data)
                                (dev && dev->name) ? dev->name : "No device connected");
         bluetooth_device_free(dev);
 
+        panel_window_backend_align_popup(GTK_WINDOW(bt_popup), bti_btn, 300);
         gtk_widget_show_all(bt_popup);
         bt_popup_visible = TRUE;
     }

@@ -363,6 +363,7 @@ static void on_battery_button_clicked(GtkButton *button, gpointer user_data) {
         gtk_widget_hide(battery_popup);
         battery_popup_visible = FALSE;
     } else {
+        panel_window_backend_align_popup(GTK_WINDOW(battery_popup), battery_button, 300);
         gtk_widget_show_all(battery_popup);
         battery_popup_visible = TRUE;
     }
