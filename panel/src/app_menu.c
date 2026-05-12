@@ -48,8 +48,8 @@ static void ensure_rgba_visual(GtkWidget *widget) {
 }
 
 void app_menu_set_relative_to(GtkWidget *menu, GtkWidget *relative_to) {
-    (void)menu;
-    (void)relative_to;
+    if (!menu || !relative_to) return;
+    panel_window_backend_align_popup(GTK_WINDOW(menu), relative_to, 220);
 }
 
 // Callback for menu item clicks

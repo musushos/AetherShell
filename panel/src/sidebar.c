@@ -1209,63 +1209,7 @@ static gboolean draw_sidebar_popup_background(GtkWidget *widget, cairo_t *cr, gp
     return FALSE;
 }
 
-static gboolean get_monitor_geometry_for_widget(GtkWidget *widget, GdkRectangle *geom) {
-    GdkDisplay *display;
-    GdkMonitor *monitor = NULL;
-    GdkWindow *window;
 
-    if (!widget || !geom) return FALSE;
-
-    display = gtk_widget_get_display(widget);
-    if (!display) return FALSE;
-
-    window = gtk_widget_get_window(widget);
-    if (window) {
-        monitor = gdk_display_get_monitor_at_window(display, window);
-    }
-    if (!monitor) {
-        monitor = gdk_display_get_primary_monitor(display);
-    }
-    if (!monitor && gdk_display_get_n_monitors(display) > 0) {
-        monitor = gdk_display_get_monitor(display, 0);
-    }
-    if (!monitor) return FALSE;
-
-    gdk_monitor_get_geometry(monitor, geom);
-    return TRUE;
-}
-
-static void reposition_sidebar_popup(GtkWidget *popup, GtkWidget *relative_to) {
-    GtkAllocation alloc;
-    GdkRectangle monitor = {0};
-    GdkWindow *window;
-    gint origin_x = 0;
-    gint popup_x;
-    gint popup_y;
-
-    if (!popup || !relative_to) return;
-    if (!gtk_widget_get_realized(relative_to)) return;
-    if (!get_monitor_geometry_for_widget(relative_to, &monitor)) return;
-
-    window = gtk_widget_get_window(relative_to);
-    if (!window) return;
-
-    gtk_widget_get_allocation(relative_to, &alloc);
-    gdk_window_get_origin(window, &origin_x, NULL);
-
-    popup_x = origin_x + alloc.x + (alloc.width / 2) - (SIDEBAR_POPUP_WIDTH / 2);
-    popup_x = CLAMP(popup_x,
-                    monitor.x + SIDEBAR_POPUP_PAD,
-                    monitor.x + monitor.width - SIDEBAR_POPUP_WIDTH - SIDEBAR_POPUP_PAD);
-    popup_y = monitor.y;
-
-    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_TOP, TRUE);
-    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
-    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_RIGHT, FALSE);
-    panel_window_backend_set_anchor(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_BOTTOM, FALSE);
-    panel_window_backend_set_margin(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_TOP, popup_y - monitor.y);
-    panel_window_backend_set_margin(GTK_WINDOW(popup), GTK_LAYER_SHELL_EDGE_LEFT, popup_x - monitor.x);
-}
 
 /* ─── Phase 3: timer IDs for start/stop on show/hide ────────────────── */
 static guint s_timer_clock   = 0;
@@ -1329,7 +1273,7 @@ GtkWidget *init_sidebar_popup(void) {
 void sidebar_popup_set_relative_to(GtkWidget *popup, GtkWidget *relative_to) {
     if (!popup) return;
     g_object_set_data(G_OBJECT(popup), "sidebar-relative-to", relative_to);
-    reposition_sidebar_popup(popup, relative_to);
+    panel_window_backend_align_popup(GTK_WINDOW(popup), relative_to, SIDEBAR_POPUP_WIDTH);
 }
 
 void sidebar_popup_toggle(GtkWidget *popup, GtkWidget *relative_to) {

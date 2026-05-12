@@ -18,6 +18,7 @@
 
 #include "builtin_plugins.h"
 #include "plugin_engine.h"
+#include "window_backend.h"
 
 /* ── Existing component headers (unchanged) ─────────────────────────────── */
 #include "app_menu.h"
@@ -146,12 +147,13 @@ static const AetherPluginTheme *_get_theme_cc(void) { return &_theme_cc_data; }
 
 static void _on_appmenu_clicked(GtkButton *btn, gpointer user_data)
 {
-    (void)btn;
     GtkWidget *menu_w = GTK_WIDGET(user_data);
     if (gtk_widget_get_visible(menu_w))
         gtk_widget_hide(menu_w);
-    else
+    else {
+        panel_window_backend_align_popup(GTK_WINDOW(menu_w), GTK_WIDGET(btn), 220);
         gtk_widget_show_all(menu_w);
+    }
 }
 
 static GtkWidget *_wrap_appmenu(AetherPanelContext *ctx)
@@ -249,22 +251,26 @@ static void _on_search_clicked(GtkButton *btn, gpointer user_data)
 
 static void _on_notifs_clicked(GtkButton *btn, gpointer user_data)
 {
-    (void)btn;
     GtkWidget *w = GTK_WIDGET(user_data);
     if (gtk_widget_get_visible(w)) gtk_widget_hide(w);
-    else gtk_widget_show_all(w);
+    else {
+        panel_window_backend_align_popup(GTK_WINDOW(w), GTK_WIDGET(btn), 360);
+        gtk_widget_show_all(w);
+    }
 }
 
 static void _on_cc_clicked(GtkButton *btn, gpointer user_data)
 {
-    (void)btn;
     GtkWidget *w = GTK_WIDGET(user_data);
     if (GTK_IS_POPOVER(w)) {
         if (gtk_widget_get_visible(w)) gtk_popover_popdown(GTK_POPOVER(w));
         else gtk_popover_popup(GTK_POPOVER(w));
     } else {
         if (gtk_widget_get_visible(w)) gtk_widget_hide(w);
-        else gtk_widget_show_all(w);
+        else {
+            panel_window_backend_align_popup(GTK_WINDOW(w), GTK_WIDGET(btn), 300);
+            gtk_widget_show_all(w);
+        }
     }
 }
 

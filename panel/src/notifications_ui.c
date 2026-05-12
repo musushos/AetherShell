@@ -185,8 +185,8 @@ static void ensure_rgba_visual(GtkWidget *widget) {
 }
 
 void notifications_ui_set_relative_to(GtkWidget *notifications_window, GtkWidget *relative_to) {
-    (void)notifications_window;
-    (void)relative_to;
+    if (!notifications_window || !relative_to) return;
+    panel_window_backend_align_popup(GTK_WINDOW(notifications_window), relative_to, 360);
 }
 
 GtkWidget* init_notifications_ui(void) {

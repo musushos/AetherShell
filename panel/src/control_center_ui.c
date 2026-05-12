@@ -560,8 +560,8 @@ static void ensure_rgba_visual(GtkWidget *widget) {
 }
 
 void control_center_set_relative_to(GtkWidget *control_center, GtkWidget *relative_to) {
-    (void)control_center;
-    (void)relative_to;
+    if (!control_center || !relative_to) return;
+    panel_window_backend_align_popup(GTK_WINDOW(control_center), relative_to, 300);
 }
 
 
