@@ -62,6 +62,81 @@
         .create_widget = _wrap_##token,                                    \
     }
 
+/* Same as BUILTIN_SIMPLE but includes a get_theme callback.
+ * theme_fn must be: static const AetherPluginTheme *_get_theme_##token(void) */
+#define BUILTIN_SIMPLE_THEMED(token, plugin_name, desc, zone_hint, fn, theme_fn) \
+    static GtkWidget *_wrap_##token(AetherPanelContext *ctx) {             \
+        (void)ctx;                                                          \
+        return fn();                                                        \
+    }                                                                       \
+    static AetherPanelPluginAPIv3 _api_##token = {                         \
+        .api_version  = AETHER_PANEL_PLUGIN_API_VERSION,                   \
+        .struct_size  = sizeof(AetherPanelPluginAPIv3),                    \
+        .name         = plugin_name,                                        \
+        .description  = desc,                                              \
+        .author       = "AetherShell",                                     \
+        .version      = "1.0.0",                                           \
+        .zone         = zone_hint,                                         \
+        .create_widget = _wrap_##token,                                    \
+        .get_theme    = theme_fn,                                          \
+    }
+
+/* =========================================================================
+ * Per-plugin colour maps (AetherPluginTheme)
+ *
+ * window_css_id must match the GTK widget name set on the popup window by
+ * the indicator source file (e.g. volume_indicator.c sets the top-level
+ * window name to "volume-mixer-window").
+ *
+ * AETHER_THEME_DARK(window_id, root_r, root_g, root_b, min_width) fills in
+ * the full dark-glassmorphism palette; only accent colour differs per plugin.
+ * ========================================================================= */
+
+/* Volume — cyan accent */
+static const AetherPluginTheme _theme_volume_data =
+    AETHER_THEME_DARK("volume-mixer-window", "mixer-outer", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_volume(void) { return &_theme_volume_data; }
+
+/* Microphone — red accent */
+static const AetherPluginTheme _theme_mic_data =
+    AETHER_THEME_DARK("mic-mixer-window", "mic-mixer-outer", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_mic(void) { return &_theme_mic_data; }
+
+/* Wi-Fi — light-blue accent */
+static const AetherPluginTheme _theme_wifi_data =
+    AETHER_THEME_DARK("wifi-indicator-window", "wifi-popup-outer", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_wifi(void) { return &_theme_wifi_data; }
+
+/* Bluetooth — indigo-blue accent */
+static const AetherPluginTheme _theme_bt_data =
+    AETHER_THEME_DARK("bt-indicator-window", "wifi-popup-outer", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_bt(void) { return &_theme_bt_data; }
+
+/* Battery — green accent */
+static const AetherPluginTheme _theme_battery_data =
+    AETHER_THEME_DARK("battery-indicator-window", "battery-popup-outer", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_battery(void) { return &_theme_battery_data; }
+
+/* App Menu — neutral-white accent */
+static const AetherPluginTheme _theme_appmenu_data =
+    AETHER_THEME_DARK("app-menu-popover", "app-menu-box", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_appmenu(void) { return &_theme_appmenu_data; }
+
+/* Clock / Sidebar — cyan accent */
+static const AetherPluginTheme _theme_clock_data =
+    AETHER_THEME_DARK("sidebar", NULL, 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_clock(void) { return &_theme_clock_data; }
+
+/* Notifications — purple accent */
+static const AetherPluginTheme _theme_notifs_data =
+    AETHER_THEME_DARK("notifications-popover", "main-box", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_notifs(void) { return &_theme_notifs_data; }
+
+/* Control Center — cyan accent (wider popup) */
+static const AetherPluginTheme _theme_cc_data =
+    AETHER_THEME_DARK("control-center-popover", "main-box", 0.0, 0.0, 0.0, 300);
+static const AetherPluginTheme *_get_theme_cc(void) { return &_theme_cc_data; }
+
 /* =========================================================================
  * 1. App Menu button
  *    The menu popup window is initialised inside the wrapper and stored as
@@ -203,6 +278,7 @@ static AetherPanelPluginAPIv3 _api_appmenu = {
     .icon_name     = "start-here-symbolic",
     .zone          = AETHER_PLUGIN_ZONE_LEFT,
     .create_widget = _wrap_appmenu,
+    .get_theme     = _get_theme_appmenu,
 };
 
 /* =========================================================================
@@ -283,31 +359,39 @@ static AetherPanelPluginAPIv3 _api_clock = {
     .zone          = AETHER_PLUGIN_ZONE_CENTER,
     .singleton     = TRUE,
     .create_widget = _wrap_clock,
+    .get_theme     = _get_theme_clock,
 };
 
 /* =========================================================================
  * 5–10. Simple wrappers for the right-side indicators
  * ========================================================================= */
+/* sni_tray and keyboard have no popup windows — no theme needed */
 BUILTIN_SIMPLE(sni_tray,  "System Tray",         "SNI status-notifier tray",
                AETHER_PLUGIN_ZONE_RIGHT, create_sni_tray_widget);
 
 BUILTIN_SIMPLE(keyboard,  "Keyboard Layout",     "Keyboard layout indicator",
                AETHER_PLUGIN_ZONE_RIGHT, create_keyboard_layout_widget);
 
-BUILTIN_SIMPLE(wifi,      "Wi-Fi",               "Wi-Fi status indicator",
-               AETHER_PLUGIN_ZONE_RIGHT, create_wifi_indicator_widget);
+/* wifi, bt, mic, volume, battery each own a popup window → themed */
+BUILTIN_SIMPLE_THEMED(wifi,    "Wi-Fi",      "Wi-Fi status indicator",
+               AETHER_PLUGIN_ZONE_RIGHT, create_wifi_indicator_widget,
+               _get_theme_wifi);
 
-BUILTIN_SIMPLE(bt,        "Bluetooth",           "Bluetooth status indicator",
-               AETHER_PLUGIN_ZONE_RIGHT, create_bt_indicator_widget);
+BUILTIN_SIMPLE_THEMED(bt,      "Bluetooth",  "Bluetooth status indicator",
+               AETHER_PLUGIN_ZONE_RIGHT, create_bt_indicator_widget,
+               _get_theme_bt);
 
-BUILTIN_SIMPLE(mic,       "Microphone",          "Microphone status indicator",
-               AETHER_PLUGIN_ZONE_RIGHT, create_mic_indicator_widget);
+BUILTIN_SIMPLE_THEMED(mic,     "Microphone", "Microphone status indicator",
+               AETHER_PLUGIN_ZONE_RIGHT, create_mic_indicator_widget,
+               _get_theme_mic);
 
-BUILTIN_SIMPLE(volume,    "Volume",              "Volume indicator",
-               AETHER_PLUGIN_ZONE_RIGHT, create_volume_indicator_widget);
+BUILTIN_SIMPLE_THEMED(volume,  "Volume",     "Volume indicator",
+               AETHER_PLUGIN_ZONE_RIGHT, create_volume_indicator_widget,
+               _get_theme_volume);
 
-BUILTIN_SIMPLE(battery,   "Battery",             "Battery level indicator",
-               AETHER_PLUGIN_ZONE_RIGHT, get_battery_widget);
+BUILTIN_SIMPLE_THEMED(battery, "Battery",   "Battery level indicator",
+               AETHER_PLUGIN_ZONE_RIGHT, get_battery_widget,
+               _get_theme_battery);
 
 /* =========================================================================
  * 11. Search button
@@ -373,6 +457,7 @@ static AetherPanelPluginAPIv3 _api_notifs = {
     .icon_name     = "preferences-system-notifications-symbolic",
     .zone          = AETHER_PLUGIN_ZONE_RIGHT,
     .create_widget = _wrap_notifs,
+    .get_theme     = _get_theme_notifs,
 };
 
 /* =========================================================================
@@ -419,6 +504,7 @@ static AetherPanelPluginAPIv3 _api_cc = {
     .zone          = AETHER_PLUGIN_ZONE_RIGHT,
     .singleton     = TRUE,
     .create_widget = _wrap_cc,
+    .get_theme     = _get_theme_cc,
 };
 
 /* =========================================================================

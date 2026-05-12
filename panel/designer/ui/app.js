@@ -623,35 +623,69 @@ document.querySelectorAll('.itab').forEach(tab => {
 
 /* ── Window styles system ──────────────────────────────────────────── */
 
-/* CSS ID maps per window key — verified from gtk_widget_set_name() in source */
+/*
+ * WIN_CSS_MAP — maps plugin-id → { windowId, outerId }
+ *
+ * windowId : GTK name set on the popup window (for CSS scope isolation)
+ * outerId  : GTK name of the inner styled container (bg/border/radius go here)
+ *            NULL = windowId IS the styled element (e.g. sidebar card)
+ *
+ * Must match the names used in gtk_widget_set_name() in each indicator source
+ * file AND the window_css_id / outer_css_id in builtin_plugins.c.
+ *
+ * CSS generated: "#windowId #outerId { ... }" or "#windowId { ... }" if
+ * outerId is null.  All other rules use "#windowId child { ... }" scope.
+ */
 const WIN_CSS_MAP = {
-  cc:        { outer: '#main-box',              header: '#card-actions',
-               accent: null,                    window: null },
-  notifs:    { outer: '#control-center-content',header: null,
-               accent: null,                    window: null },
-  sidebar:   { outer: '#sidebar',               header: '#clock_panel',
-               accent: null,                    window: '#sidebar-popup-surface' },
-  'app-menu':{ outer: '#app-menu-box',          header: null,
-               accent: '.app-menu-item:hover',  window: null },
-  volume:    { outer: '#mixer-outer',            header: '#mixer-header',
-               accent: '#mixer-slider scale trough highlight', window: '#volume-mixer-window' },
-  mic:       { outer: '#mic-mixer-outer',        header: '#mic-mixer-header',
-               accent: '#mic-mixer-slider scale trough highlight', window: '#mic-mixer-window' },
-  wifi:      { outer: '#wifi-popup-outer',       header: '#wifi-popup-header',
-               accent: null,                    window: '#wifi-indicator-window' },
-  battery:   { outer: '#battery-popup-outer',    header: '#battery-popup-header',
-               accent: null,                    window: '#battery-indicator-window' },
+  'aether-volume':  { windowId: 'volume-mixer-window',      outerId: 'mixer-outer' },
+  'aether-mic':     { windowId: 'mic-mixer-window',         outerId: 'mic-mixer-outer' },
+  'aether-wifi':    { windowId: 'wifi-indicator-window',    outerId: 'wifi-popup-outer' },
+  'aether-bt':      { windowId: 'bt-indicator-window',      outerId: 'wifi-popup-outer' },
+  'aether-battery': { windowId: 'battery-indicator-window', outerId: 'battery-popup-outer' },
+  'aether-notifs':  { windowId: 'notifications-popover',    outerId: 'main-box' },
+  'aether-cc':      { windowId: 'control-center-popover',   outerId: 'main-box' },
+  'aether-appmenu': { windowId: 'app-menu-popover',         outerId: 'app-menu-box' },
+  'aether-clock':   { windowId: 'sidebar',                  outerId: null },
 };
 
-/* Per-window style state */
+/* Per-window style state — keyed by plugin id (e.g. 'aether-volume') */
 if (!state.winStyles) state.winStyles = {};
 
-function defaultWinStyle() {
-  return { bgColor: '#161b22', bgAlpha: 97, radius: 14,
-           borderOn: false, borderColor: '#ffffff', borderAlpha: 10,
-           headerColor: '#7c3aed', headerAlpha: 15,
-           accentColor: '#7c3aed', accentAlpha: 100,
-           width: 320 };
+/* Default theme values mirror the AETHER_THEME_DARK macro dark palette */
+function defaultWinStyle(pluginId) {
+  /* Accent colour per plugin — mirrors builtin_plugins.c theme definitions */
+  const ACCENTS = {
+    'aether-volume':  '#00e5ff',  /* cyan  */
+    'aether-mic':     '#ff4444',  /* red   */
+    'aether-wifi':    '#4fc3f7',  /* light blue */
+    'aether-bt':      '#448aff',  /* indigo blue */
+    'aether-battery': '#69f0ae',  /* green */
+    'aether-notifs':  '#ce93d8',  /* purple */
+    'aether-cc':      '#00e5ff',  /* cyan  */
+    'aether-appmenu': '#eeeeee',  /* white */
+    'aether-clock':   '#00e5ff',  /* cyan  */
+  };
+  return {
+    accentColor:   ACCENTS[pluginId] || '#00e5ff',
+    accentAlpha:   100,
+    bgColor:       '#0c0c0e',
+    bgAlpha:       92,
+    surfaceColor:  '#181820',
+    surfaceAlpha:  85,
+    elementColor:  '#2a2a30',
+    elementAlpha:  100,
+    textColor:     '#cccccc',
+    textAlpha:     100,
+    text2Color:    '#888888',
+    text2Alpha:    100,
+    iconColor:     '#888888',
+    iconAlpha:     100,
+    borderOn:      true,
+    borderColor:   '#ffffff',
+    borderAlpha:   10,
+    radius:        14,
+    width:         320,
+  };
 }
 
 function currentWinKey() {
@@ -659,50 +693,86 @@ function currentWinKey() {
 }
 
 function loadWinControls(key) {
-  if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle();
-  const s = state.winStyles[key];
+  if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle(key);
+  const s   = state.winStyles[key];
+  const map = WIN_CSS_MAP[key];
 
-  document.getElementById('win-bg-color').value        = s.bgColor;
-  document.getElementById('win-bg-alpha').value        = s.bgAlpha;
-  document.getElementById('win-bg-alpha-val').textContent = s.bgAlpha + '%';
-  document.getElementById('win-radius').value          = s.radius;
-  document.getElementById('win-radius-val').textContent = s.radius + 'px';
-  document.getElementById('win-border-on').checked     = s.borderOn;
-  document.getElementById('win-border-color').value    = s.borderColor;
-  document.getElementById('win-border-alpha').value    = s.borderAlpha;
-  document.getElementById('win-border-alpha-val').textContent = s.borderAlpha + '%';
-  document.getElementById('win-header-color').value    = s.headerColor;
-  document.getElementById('win-header-alpha').value    = s.headerAlpha;
-  document.getElementById('win-header-alpha-val').textContent = s.headerAlpha + '%';
-  document.getElementById('win-accent-color').value    = s.accentColor;
-  document.getElementById('win-accent-alpha').value    = s.accentAlpha;
-  document.getElementById('win-accent-alpha-val').textContent = s.accentAlpha + '%';
-  document.getElementById('win-width').value           = s.width;
-  document.getElementById('win-width-val').textContent = s.width + 'px';
+  /* Show scope hint so the user knows which GTK selectors are affected */
+  const outerSel = map ? (map.outerId
+    ? `#${map.windowId} #${map.outerId}`
+    : `#${map.windowId}`) : '?';
+  const hint = document.getElementById('win-scope-code');
+  if (hint) hint.textContent = outerSel;
+
+  function sv(id, val) { const e = document.getElementById(id); if (e) e.value = val; }
+  function st(id, val) { const e = document.getElementById(id); if (e) e.textContent = val; }
+  function sc(id, val) { const e = document.getElementById(id); if (e) e.checked = val; }
+
+  sv('win-accent-color',   s.accentColor);   st('win-accent-alpha-val',  s.accentAlpha + '%');  sv('win-accent-alpha',  s.accentAlpha);
+  sv('win-bg-color',       s.bgColor);       st('win-bg-alpha-val',      s.bgAlpha + '%');       sv('win-bg-alpha',      s.bgAlpha);
+  sv('win-surface-color',  s.surfaceColor);  st('win-surface-alpha-val', s.surfaceAlpha + '%'); sv('win-surface-alpha', s.surfaceAlpha);
+  sv('win-element-color',  s.elementColor);  st('win-element-alpha-val', s.elementAlpha + '%'); sv('win-element-alpha', s.elementAlpha);
+  sv('win-text-color',     s.textColor);     st('win-text-alpha-val',    s.textAlpha + '%');     sv('win-text-alpha',    s.textAlpha);
+  sv('win-text2-color',    s.text2Color);    st('win-text2-alpha-val',   s.text2Alpha + '%');    sv('win-text2-alpha',   s.text2Alpha);
+  sv('win-icon-color',     s.iconColor);     st('win-icon-alpha-val',    s.iconAlpha + '%');     sv('win-icon-alpha',    s.iconAlpha);
+  sc('win-border-on',      s.borderOn);
+  sv('win-border-color',   s.borderColor);   st('win-border-alpha-val',  s.borderAlpha + '%');  sv('win-border-alpha',  s.borderAlpha);
+  sv('win-radius',         s.radius);        st('win-radius-val',        s.radius + 'px');
+  sv('win-width',          s.width);         st('win-width-val',         s.width + 'px');
 }
 
+/*
+ * generateWindowCSS — produces per-plugin SCOPED CSS.
+ *
+ * Every rule is prefixed with the window's GTK id selector so rules from
+ * different plugins can NEVER conflict, even if they share inner widget names
+ * (e.g. both bt and wifi use "#wifi-popup-outer" internally).
+ *
+ * Selector structure:
+ *   Background/border/radius → "#windowId #outerId { ... }"
+ *   Labels                  → "#windowId label { ... }"
+ *   Icons                   → "#windowId image { ... }"
+ *   Slider trough           → "#windowId scale trough { ... }"
+ *   Slider fill (accent)    → "#windowId scale highlight { ... }"
+ *   Toggle bg               → "#windowId switch { ... }"
+ *   Toggle active (accent)  → "#windowId switch:checked { ... }"
+ *   Surface/card            → "#windowId .card { ... }"
+ */
 function generateWindowCSS() {
-  const lines = ['/* ── Window styles (Panel Designer) ── */'];
+  const lines = ['/* ── Window theme overrides (Panel Designer) ── */'];
 
-  /* Always ensure every key has at least default values */
-  for (const key of Object.keys(WIN_CSS_MAP)) {
-    if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle();
-  }
-
-  for (const [key, s] of Object.entries(state.winStyles)) {
-    const map = WIN_CSS_MAP[key];
+  for (const [pluginId, s] of Object.entries(state.winStyles)) {
+    const map = WIN_CSS_MAP[pluginId];
     if (!map) continue;
-    const bg     = rgba(s.bgColor, s.bgAlpha);
-    const border = s.borderOn
+
+    const win     = map.windowId;
+    const outerSel = map.outerId ? `#${win} #${map.outerId}` : `#${win}`;
+    const winSel   = `#${win}`;
+
+    const bg      = rgba(s.bgColor,      s.bgAlpha);
+    const surface = rgba(s.surfaceColor, s.surfaceAlpha);
+    const element = rgba(s.elementColor, s.elementAlpha);
+    const text    = rgba(s.textColor,    s.textAlpha);
+    const text2   = rgba(s.text2Color,   s.text2Alpha);
+    const icon    = rgba(s.iconColor,    s.iconAlpha);
+    const accent  = rgba(s.accentColor,  s.accentAlpha);
+    const border  = s.borderOn
       ? `1px solid ${rgba(s.borderColor, s.borderAlpha)}`
       : 'none';
-    const hdr    = rgba(s.headerColor, s.headerAlpha);
-    const acc    = rgba(s.accentColor, s.accentAlpha);
 
-    if (map.window) lines.push(`#${map.window.replace(/^#/,'')} { min-width: ${s.width}px; }`);
-    if (map.outer)  lines.push(`${map.outer} { background-color: ${bg}; border-radius: ${s.radius}px; border: ${border}; }`);
-    if (map.header) lines.push(`${map.header} { background-color: ${hdr}; }`);
-    if (map.accent) lines.push(`${map.accent} { background-color: ${acc}; }`);
+    lines.push(
+      `/* ${pluginId} — scoped under #${win} */`,
+      `${outerSel} { background-color: ${bg}; border-radius: ${s.radius}px; border: ${border}; min-width: ${s.width}px; }`,
+      `${winSel} label { color: ${text}; }`,
+      `${winSel} .muted, ${winSel} .subtitle { color: ${text2}; }`,
+      `${winSel} image { color: ${icon}; }`,
+      `${winSel} .card { background-color: ${surface}; }`,
+      `${winSel} scale trough { background-color: ${element}; }`,
+      `${winSel} switch { background-color: ${element}; }`,
+      `${winSel} scale highlight { background-color: ${accent}; }`,
+      `${winSel} switch:checked { background-color: ${accent}; }`,
+      ''
+    );
   }
   return lines.join('\n');
 }
@@ -713,49 +783,70 @@ function wireWindowControls() {
     loadWinControls(currentWinKey());
   });
 
-  const winControls = [
-    ['win-bg-alpha',     'win-bg-alpha-val',     '%',  'bgAlpha'],
-    ['win-radius',       'win-radius-val',        'px', 'radius'],
-    ['win-border-alpha', 'win-border-alpha-val',  '%',  'borderAlpha'],
-    ['win-header-alpha', 'win-header-alpha-val',  '%',  'headerAlpha'],
-    ['win-accent-alpha', 'win-accent-alpha-val',  '%',  'accentAlpha'],
-    ['win-width',        'win-width-val',         'px', 'width'],
+  /* Range sliders — [inputId, displayId, unit, stateKey] */
+  const winRanges = [
+    ['win-accent-alpha',  'win-accent-alpha-val',  '%',  'accentAlpha'],
+    ['win-bg-alpha',      'win-bg-alpha-val',      '%',  'bgAlpha'],
+    ['win-surface-alpha', 'win-surface-alpha-val', '%',  'surfaceAlpha'],
+    ['win-element-alpha', 'win-element-alpha-val', '%',  'elementAlpha'],
+    ['win-text-alpha',    'win-text-alpha-val',    '%',  'textAlpha'],
+    ['win-text2-alpha',   'win-text2-alpha-val',   '%',  'text2Alpha'],
+    ['win-icon-alpha',    'win-icon-alpha-val',    '%',  'iconAlpha'],
+    ['win-border-alpha',  'win-border-alpha-val',  '%',  'borderAlpha'],
+    ['win-radius',        'win-radius-val',        'px', 'radius'],
+    ['win-width',         'win-width-val',         'px', 'width'],
   ];
-
-  for (const [id, valId, unit, prop] of winControls) {
-    document.getElementById(id).addEventListener('input', function() {
+  for (const [id, valId, unit, prop] of winRanges) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', function() {
       document.getElementById(valId).textContent = this.value + unit;
       const key = currentWinKey();
-      if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle();
+      if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle(key);
       state.winStyles[key][prop] = Number(this.value);
       markDirty();
     });
   }
 
-  for (const [id, prop] of [['win-bg-color','bgColor'],['win-border-color','borderColor'],
-                              ['win-header-color','headerColor'],['win-accent-color','accentColor']]) {
-    document.getElementById(id).addEventListener('input', function() {
+  /* Color pickers — [inputId, stateKey] */
+  const winColors = [
+    ['win-accent-color',  'accentColor'],
+    ['win-bg-color',      'bgColor'],
+    ['win-surface-color', 'surfaceColor'],
+    ['win-element-color', 'elementColor'],
+    ['win-text-color',    'textColor'],
+    ['win-text2-color',   'text2Color'],
+    ['win-icon-color',    'iconColor'],
+    ['win-border-color',  'borderColor'],
+  ];
+  for (const [id, prop] of winColors) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', function() {
       const key = currentWinKey();
-      if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle();
+      if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle(key);
       state.winStyles[key][prop] = this.value;
       markDirty();
     });
   }
 
+  /* Checkbox */
   document.getElementById('win-border-on').addEventListener('change', function() {
     const key = currentWinKey();
-    if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle();
+    if (!state.winStyles[key]) state.winStyles[key] = defaultWinStyle(key);
     state.winStyles[key].borderOn = this.checked;
     markDirty();
   });
 
+  /* Reset button */
   document.getElementById('btn-reset-win').addEventListener('click', () => {
     const key = currentWinKey();
-    state.winStyles[key] = defaultWinStyle();
+    state.winStyles[key] = defaultWinStyle(key);
     loadWinControls(key);
     markDirty();
   });
 
+  /* Apply immediately */
   document.getElementById('btn-apply-win').addEventListener('click', () => {
     const allCSS = generateCSS() + '\n' + generateWindowCSS();
     sendToC({ action: 'apply_css', css: allCSS });
@@ -772,4 +863,4 @@ window.generateFullCSS = function() {
 /* ── Boot ──────────────────────────────────────────────────────────── */
 wireInspector();
 wireWindowControls();
-loadWinControls('cc');
+loadWinControls('aether-volume');

@@ -560,6 +560,42 @@ input[type="range"] {
 }
 #win-select:focus { outline: none; border-color: var(--accent); }
 
+/* Scope hint — shows the scoped GTK CSS selector */
+.scope-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+.scope-hint code {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--accent2);
+  background: rgba(255,255,255,0.04);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* Section title separators inside #win-props */
+.prop-section-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--accent2);
+  opacity: 0.7;
+  padding: 10px 0 6px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+.prop-section-title:first-child {
+  border-top: none;
+  padding-top: 4px;
+  margin-top: 0;
+}
+
 #win-props {
   padding: 10px 12px;
   flex: 1;

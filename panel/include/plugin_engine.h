@@ -22,6 +22,8 @@ typedef struct {
     GtkWidget              *widget;      /* widget returned by create_widget()   */
     void                   *dl_handle;  /* dlopen handle; NULL for built-ins    */
     AetherPanelContext      ctx;         /* context passed to create_widget()   */
+    GtkCssProvider         *theme_provider; /* per-plugin scoped CSS provider   */
+    char                   *window_css_id;  /* derived popup CSS id             */
 } AetherLoadedPlugin;
 
 /* ── Lifecycle ─────────────────────────────────────────────────────────────── */
@@ -128,3 +130,39 @@ void plugin_engine_foreach(AetherPluginForeachFunc func, gpointer user_data);
  */
 void plugin_engine_broadcast_event(AetherSystemEvent event,
                                    void             *event_data);
+
+/* ── Theme Management ─────────────────────────────────────────────────── */
+
+/**
+ * plugin_engine_apply_theme:
+ * Reads the plugin's get_theme() result and generates scoped CSS keyed
+ * on window_css_id, then installs it in a dedicated GtkCssProvider for
+ * that plugin only.  Other plugins are completely unaffected.
+ * Safe to call multiple times — the provider is updated in place.
+ */
+void plugin_engine_apply_theme(const char *plugin_id);
+
+/**
+ * plugin_engine_apply_theme_all:
+ * Calls plugin_engine_apply_theme() for every registered plugin that
+ * exposes a get_theme() callback.
+ */
+void plugin_engine_apply_theme_all(void);
+
+/**
+ * plugin_engine_get_theme:
+ * Returns the AetherPluginTheme currently reported by the plugin, or
+ * NULL if the plugin has no get_theme callback.
+ * The pointer is owned by the plugin and must not be freed.
+ */
+const AetherPluginTheme *plugin_engine_get_theme(const char *plugin_id);
+
+/**
+ * plugin_engine_set_theme:
+ * Overrides a plugin's theme at runtime with a caller-supplied struct.
+ * The engine makes an internal copy; the caller may free theirs afterward.
+ * Passing NULL restores the plugin's own get_theme() result.
+ * Intended for use by the Settings / Designer UI.
+ */
+void plugin_engine_set_theme(const char           *plugin_id,
+                             const AetherPluginTheme *theme);
