@@ -1246,30 +1246,69 @@ static GtkWidget *build_launcher(AppMenuState *state)
 /*  BUTTON ICON AND CSS                                                */
 /* ================================================================== */
 
+static void draw_rounded_rect(cairo_t *cr, double x, double y, double w, double h, double r)
+{
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + w - r, y + r, r, -G_PI_2, 0);
+    cairo_arc(cr, x + w - r, y + h - r, r, 0, G_PI_2);
+    cairo_arc(cr, x + r, y + h - r, r, G_PI_2, G_PI);
+    cairo_arc(cr, x + r, y + r, r, G_PI, 3 * G_PI_2);
+    cairo_close_path(cr);
+}
+
+static gboolean on_draw_launcher_icon(GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+    (void)data;
+    int w = gtk_widget_get_allocated_width(widget);
+    int h = gtk_widget_get_allocated_height(widget);
+
+    /* Aether style grid (2x2 rounded squares) */
+    double size = 6.0;
+    double gap  = 2.0;
+    double r    = 2.0;
+
+    /* Center it */
+    double start_x = (w - (size * 2 + gap)) / 2.0;
+    double start_y = (h - (size * 2 + gap)) / 2.0;
+
+    /* Colors: Cyan / Teal palette for AetherShell */
+    struct { double r, g, b, a; } colors[4] = {
+        { 0.10, 0.65, 0.85, 1.0 }, /* Top-Left: Light Blue */
+        { 0.15, 0.80, 0.85, 1.0 }, /* Top-Right: Cyan */
+        { 0.05, 0.45, 0.75, 1.0 }, /* Bottom-Left: Darker Blue */
+        { 0.10, 0.70, 0.80, 1.0 }  /* Bottom-Right: Mid Teal */
+    };
+
+    /* Slight opacity if the button isn't active/hovered, but keeping it vibrant */
+    gboolean active = FALSE;
+    GtkWidget *parent = gtk_widget_get_parent(widget);
+    if (parent && GTK_IS_TOGGLE_BUTTON(parent)) {
+        active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(parent));
+    }
+
+    int i = 0;
+    for (int row = 0; row < 2; row++) {
+        for (int col = 0; col < 2; col++) {
+            double x = start_x + col * (size + gap);
+            double y = start_y + row * (size + gap);
+
+            draw_rounded_rect(cr, x, y, size, size, r);
+            double alpha = active ? colors[i].a : (colors[i].a * 0.85);
+            cairo_set_source_rgba(cr, colors[i].r, colors[i].g, colors[i].b, alpha);
+            cairo_fill(cr);
+            i++;
+        }
+    }
+
+    return FALSE;
+}
+
 static GtkWidget *create_app_menu_icon(void)
 {
-    gchar *icon_path = resolve_asset_path("launchpad.svg");
-    GdkPixbuf *pixbuf = NULL;
-    GError *error = NULL;
-    GtkWidget *image;
-
-    if (icon_path) {
-        pixbuf = gdk_pixbuf_new_from_file_at_scale(icon_path, 20, 20, TRUE, &error);
-    }
-
-    if (pixbuf) {
-        image = gtk_image_new_from_pixbuf(pixbuf);
-        g_object_unref(pixbuf);
-    } else {
-        if (error) {
-            g_warning("[AppMenu] Failed to load %s: %s", icon_path, error->message);
-            g_error_free(error);
-        }
-        image = gtk_image_new_from_icon_name("start-here-symbolic", GTK_ICON_SIZE_MENU);
-    }
-
-    g_free(icon_path);
-    return image;
+    GtkWidget *da = gtk_drawing_area_new();
+    gtk_widget_set_size_request(da, 20, 20);
+    g_signal_connect(da, "draw", G_CALLBACK(on_draw_launcher_icon), NULL);
+    return da;
 }
 
 static void ensure_launcher_css(void)
