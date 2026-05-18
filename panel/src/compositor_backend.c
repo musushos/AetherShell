@@ -1,5 +1,6 @@
 #include "compositor_backend.h"
 #include "aether-ipc-v1-client-protocol.h"
+#include "aether-ipc-unstable-v2-client-protocol.h"
 #include "workspaces_xorg.h"
 #include "kb_indicator_xorg.h"
 #include "window_backend.h"
@@ -18,6 +19,7 @@ typedef enum {
     COMPOSITOR_BACKEND_NONE = 0,
     COMPOSITOR_BACKEND_WAYFIRE,
     COMPOSITOR_BACKEND_AETHER,
+    COMPOSITOR_BACKEND_AETHER_V2,
     COMPOSITOR_BACKEND_X11
 } CompositorBackendType;
 
@@ -54,6 +56,12 @@ static guint s_xorg_keyboard_poll_id = 0;
 static struct wl_display *s_wl_display = NULL;
 static struct wl_registry *s_wl_registry = NULL;
 static struct aether_ipc_manager_v1 *s_aether_manager = NULL;
+
+/* Aether V2 Wayland protocol state */
+static struct zaether_ipc_manager_v2 *s_aether_manager_v2 = NULL;
+static struct zaether_ipc_output_v2 *s_aether_output_v2 = NULL;
+static struct wl_output *s_wl_output = NULL;
+static uint32_t s_v2_tag_count = 0;
 
 static void emit_workspace_state(void) {
     if (s_workspace_cb && s_have_workspace_state) {
@@ -454,6 +462,75 @@ static const struct aether_ipc_manager_v1_listener s_aether_listener = {
     .keyboard_state = handle_aether_keyboard_state,
 };
 
+static void handle_v2_manager_tags(void *data, struct zaether_ipc_manager_v2 *manager, uint32_t amount) {
+    (void)data; (void)manager;
+    s_v2_tag_count = amount;
+    s_workspace_state.grid_width = amount;
+    s_workspace_state.grid_height = 1;
+}
+
+static void handle_v2_manager_layout(void *data, struct zaether_ipc_manager_v2 *manager, const char *name) {
+    (void)data; (void)manager; (void)name;
+}
+
+static const struct zaether_ipc_manager_v2_listener s_aether_manager_v2_listener = {
+    .tags = handle_v2_manager_tags,
+    .layout = handle_v2_manager_layout,
+};
+
+static void handle_v2_output_toggle_visibility(void *data, struct zaether_ipc_output_v2 *output) {}
+static void handle_v2_output_active(void *data, struct zaether_ipc_output_v2 *output, uint32_t active) {}
+static void handle_v2_output_tag(void *data, struct zaether_ipc_output_v2 *output, uint32_t tag, uint32_t state, uint32_t clients, uint32_t focused) {
+    if (state == 1) { // 1 = active
+        s_workspace_state.x = tag;
+        s_workspace_state.y = 0;
+    }
+}
+static void handle_v2_output_layout(void *data, struct zaether_ipc_output_v2 *output, uint32_t layout) {}
+static void handle_v2_output_title(void *data, struct zaether_ipc_output_v2 *output, const char *title) {}
+static void handle_v2_output_appid(void *data, struct zaether_ipc_output_v2 *output, const char *appid) {}
+static void handle_v2_output_layout_symbol(void *data, struct zaether_ipc_output_v2 *output, const char *layout) {}
+static void handle_v2_output_frame(void *data, struct zaether_ipc_output_v2 *output) {
+    s_have_workspace_state = TRUE;
+    emit_workspace_state();
+}
+static void handle_v2_output_fullscreen(void *data, struct zaether_ipc_output_v2 *output, uint32_t is_fullscreen) {}
+static void handle_v2_output_floating(void *data, struct zaether_ipc_output_v2 *output, uint32_t is_floating) {}
+static void handle_v2_output_x(void *data, struct zaether_ipc_output_v2 *output, int32_t x) {}
+static void handle_v2_output_y(void *data, struct zaether_ipc_output_v2 *output, int32_t y) {}
+static void handle_v2_output_width(void *data, struct zaether_ipc_output_v2 *output, int32_t width) {}
+static void handle_v2_output_height(void *data, struct zaether_ipc_output_v2 *output, int32_t height) {}
+static void handle_v2_output_last_layer(void *data, struct zaether_ipc_output_v2 *output, const char *last_layer) {}
+static void handle_v2_output_kb_layout(void *data, struct zaether_ipc_output_v2 *output, const char *kb_layout) {
+    g_strlcpy(s_keyboard_state.layouts, kb_layout ? kb_layout : "", sizeof(s_keyboard_state.layouts));
+    s_keyboard_state.layout_index = 0;
+    s_have_keyboard_state = TRUE;
+    emit_keyboard_state();
+}
+static void handle_v2_output_keymode(void *data, struct zaether_ipc_output_v2 *output, const char *keymode) {}
+static void handle_v2_output_scalefactor(void *data, struct zaether_ipc_output_v2 *output, uint32_t scalefactor) {}
+
+static const struct zaether_ipc_output_v2_listener s_aether_output_v2_listener = {
+    .toggle_visibility = handle_v2_output_toggle_visibility,
+    .active = handle_v2_output_active,
+    .tag = handle_v2_output_tag,
+    .layout = handle_v2_output_layout,
+    .title = handle_v2_output_title,
+    .appid = handle_v2_output_appid,
+    .layout_symbol = handle_v2_output_layout_symbol,
+    .frame = handle_v2_output_frame,
+    .fullscreen = handle_v2_output_fullscreen,
+    .floating = handle_v2_output_floating,
+    .x = handle_v2_output_x,
+    .y = handle_v2_output_y,
+    .width = handle_v2_output_width,
+    .height = handle_v2_output_height,
+    .last_layer = handle_v2_output_last_layer,
+    .kb_layout = handle_v2_output_kb_layout,
+    .keymode = handle_v2_output_keymode,
+    .scalefactor = handle_v2_output_scalefactor,
+};
+
 static void on_registry_global(void *data,
                                struct wl_registry *registry,
                                uint32_t name,
@@ -467,6 +544,16 @@ static void on_registry_global(void *data,
                                             &aether_ipc_manager_v1_interface,
                                             MIN(version, 1u));
         aether_ipc_manager_v1_add_listener(s_aether_manager, &s_aether_listener, NULL);
+    } else if (g_strcmp0(interface, zaether_ipc_manager_v2_interface.name) == 0) {
+        s_aether_manager_v2 = wl_registry_bind(registry,
+                                               name,
+                                               &zaether_ipc_manager_v2_interface,
+                                               MIN(version, 2u));
+        zaether_ipc_manager_v2_add_listener(s_aether_manager_v2, &s_aether_manager_v2_listener, NULL);
+    } else if (g_strcmp0(interface, "wl_output") == 0 && !s_wl_output) {
+        // Just bind the first wl_output for the panel's active workspace state
+        // In a multi-monitor panel, we'd probably want to bind the specific output
+        s_wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
     }
 }
 
@@ -500,6 +587,14 @@ static gboolean init_aether_backend(void) {
 
     wl_registry_add_listener(s_wl_registry, &s_registry_listener, NULL);
     wl_display_roundtrip(s_wl_display);
+    
+    if (s_aether_manager_v2 && s_wl_output) {
+        s_aether_output_v2 = zaether_ipc_manager_v2_get_output(s_aether_manager_v2, s_wl_output);
+        zaether_ipc_output_v2_add_listener(s_aether_output_v2, &s_aether_output_v2_listener, NULL);
+        wl_display_roundtrip(s_wl_display);
+        return TRUE;
+    }
+
     if (!s_aether_manager) return FALSE;
     wl_display_roundtrip(s_wl_display);
     return TRUE;
@@ -546,7 +641,11 @@ void panel_compositor_backend_init(void) {
     s_initialized = TRUE;
 
     if (init_aether_backend()) {
-        s_backend = COMPOSITOR_BACKEND_AETHER;
+        if (s_aether_manager_v2) {
+            s_backend = COMPOSITOR_BACKEND_AETHER_V2;
+        } else {
+            s_backend = COMPOSITOR_BACKEND_AETHER;
+        }
         return;
     }
 
@@ -582,6 +681,8 @@ const char *panel_compositor_backend_name(void) {
     switch (s_backend) {
         case COMPOSITOR_BACKEND_AETHER:
             return "aether";
+        case COMPOSITOR_BACKEND_AETHER_V2:
+            return "aether-v2";
         case COMPOSITOR_BACKEND_WAYFIRE:
             return "wayfire";
         case COMPOSITOR_BACKEND_X11:
@@ -604,6 +705,14 @@ void panel_compositor_backend_set_keyboard_callback(PanelKeyboardStateCallback c
 }
 
 gboolean panel_compositor_backend_set_workspace(int output_id, int x, int y) {
+    if (s_backend == COMPOSITOR_BACKEND_AETHER_V2 && s_aether_output_v2) {
+        zaether_ipc_output_v2_set_tags(s_aether_output_v2, 1 << x, 0);
+#ifdef GDK_WINDOWING_WAYLAND
+        if (s_wl_display) wl_display_flush(s_wl_display);
+#endif
+        return TRUE;
+    }
+
     if (s_backend == COMPOSITOR_BACKEND_AETHER && s_aether_manager) {
         aether_ipc_manager_v1_set_workspace(s_aether_manager, output_id, x, y);
 #ifdef GDK_WINDOWING_WAYLAND
