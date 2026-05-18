@@ -1,4 +1,4 @@
-sudo apt install libgtk-layer-shell0 
+sudo apt install libgtk-layer-shell0 slurp
 
 
 للبناء 
