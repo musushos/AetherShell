@@ -21,7 +21,6 @@ packages=(
     aether-aetherlock
     aether-aetheridle
     aether-aether-recorder
-    aether-vpanel
 )
 
 echo "--- Uninstalling AetherShell Components ---"

@@ -5,6 +5,7 @@
 #include <glib-unix.h>
 #include <wayland-client.h>
 #include "aether-ipc-v1-client-protocol.h"
+#include "aether-ipc-v2-client-protocol.h"
 #include <sys/stat.h>
 
 // Wayfire JSON IPC globals
@@ -21,6 +22,9 @@ static gboolean aether_global_warned = FALSE;
 static struct wl_display *aether_display = NULL;
 static struct wl_registry *aether_registry = NULL;
 static struct aether_ipc_manager_v1 *aether_manager = NULL;
+static struct zaether_ipc_manager_v2 *aether_manager_v2 = NULL;
+static GList *aether_outputs = NULL;
+static GList *aether_output_v2_objects = NULL;
 static guint aether_io_watch_id = 0;
 static guint aether_reconnect_id = 0;
 
@@ -338,6 +342,66 @@ static const struct aether_ipc_manager_v1_listener aether_manager_listener = {
     .keyboard_state = aether_handle_keyboard_state,
 };
 
+static void aether_v2_output_toggle_visibility(void *d, struct zaether_ipc_output_v2 *o) { (void)d; (void)o; }
+static void aether_v2_output_active(void *d, struct zaether_ipc_output_v2 *o, uint32_t a) { (void)d; (void)o; (void)a; }
+static void aether_v2_output_tag(void *d, struct zaether_ipc_output_v2 *o, uint32_t t, uint32_t s, uint32_t c, uint32_t f) { (void)d; (void)o; (void)t; (void)s; (void)c; (void)f; }
+static void aether_v2_output_layout(void *d, struct zaether_ipc_output_v2 *o, uint32_t l) { (void)d; (void)o; (void)l; }
+static void aether_v2_output_title(void *d, struct zaether_ipc_output_v2 *o, const char *t) { (void)d; (void)o; (void)t; }
+static void aether_v2_output_appid(void *d, struct zaether_ipc_output_v2 *o, const char *a) { (void)d; (void)o; (void)a; }
+static void aether_v2_output_layout_symbol(void *d, struct zaether_ipc_output_v2 *o, const char *l) { (void)d; (void)o; (void)l; }
+static void aether_v2_output_frame(void *d, struct zaether_ipc_output_v2 *o) { (void)d; (void)o; }
+static void aether_v2_output_fullscreen(void *d, struct zaether_ipc_output_v2 *o, uint32_t f) { (void)d; (void)o; (void)f; }
+static void aether_v2_output_floating(void *d, struct zaether_ipc_output_v2 *o, uint32_t f) { (void)d; (void)o; (void)f; }
+static void aether_v2_output_x(void *d, struct zaether_ipc_output_v2 *o, int32_t x) { (void)d; (void)o; (void)x; }
+static void aether_v2_output_y(void *d, struct zaether_ipc_output_v2 *o, int32_t y) { (void)d; (void)o; (void)y; }
+static void aether_v2_output_width(void *d, struct zaether_ipc_output_v2 *o, int32_t w) { (void)d; (void)o; (void)w; }
+static void aether_v2_output_height(void *d, struct zaether_ipc_output_v2 *o, int32_t h) { (void)d; (void)o; (void)h; }
+static void aether_v2_output_last_layer(void *d, struct zaether_ipc_output_v2 *o, const char *l) { (void)d; (void)o; (void)l; }
+static void aether_v2_output_keymode(void *d, struct zaether_ipc_output_v2 *o, const char *k) { (void)d; (void)o; (void)k; }
+static void aether_v2_output_scalefactor(void *d, struct zaether_ipc_output_v2 *o, uint32_t s) { (void)d; (void)o; (void)s; }
+
+static void aether_v2_handle_kb_layout(void *data,
+    struct zaether_ipc_output_v2 *output,
+    const char *kb_layout) {
+    (void)data;
+    (void)output;
+
+    if (!callbacks.set_keyboard_label || !kb_layout) {
+        return;
+    }
+
+    callbacks.set_keyboard_label(kb_layout, TRUE);
+}
+
+static const struct zaether_ipc_output_v2_listener aether_output_v2_listener = {
+    .toggle_visibility = aether_v2_output_toggle_visibility,
+    .active = aether_v2_output_active,
+    .tag = aether_v2_output_tag,
+    .layout = aether_v2_output_layout,
+    .title = aether_v2_output_title,
+    .appid = aether_v2_output_appid,
+    .layout_symbol = aether_v2_output_layout_symbol,
+    .frame = aether_v2_output_frame,
+    .fullscreen = aether_v2_output_fullscreen,
+    .floating = aether_v2_output_floating,
+    .x = aether_v2_output_x,
+    .y = aether_v2_output_y,
+    .width = aether_v2_output_width,
+    .height = aether_v2_output_height,
+    .last_layer = aether_v2_output_last_layer,
+    .kb_layout = aether_v2_handle_kb_layout,
+    .keymode = aether_v2_output_keymode,
+    .scalefactor = aether_v2_output_scalefactor,
+};
+
+static void aether_v2_manager_tags(void *d, struct zaether_ipc_manager_v2 *m, uint32_t a) { (void)d; (void)m; (void)a; }
+static void aether_v2_manager_layout(void *d, struct zaether_ipc_manager_v2 *m, const char *n) { (void)d; (void)m; (void)n; }
+
+static const struct zaether_ipc_manager_v2_listener aether_manager_v2_listener = {
+    .tags = aether_v2_manager_tags,
+    .layout = aether_v2_manager_layout,
+};
+
 static void aether_registry_global(void *data,
     struct wl_registry *registry,
     uint32_t name,
@@ -345,15 +409,35 @@ static void aether_registry_global(void *data,
     uint32_t version) {
     (void)data;
 
-    if (g_strcmp0(interface, aether_ipc_manager_v1_interface.name) != 0 || aether_manager) {
-        return;
-    }
+    if (g_strcmp0(interface, aether_ipc_manager_v1_interface.name) == 0 && !aether_manager) {
+        uint32_t bind_version = version < 1 ? version : 1;
+        aether_manager = wl_registry_bind(registry, name, &aether_ipc_manager_v1_interface, bind_version);
+        if (aether_manager) {
+            aether_ipc_manager_v1_add_listener(aether_manager, &aether_manager_listener, NULL);
+            aether_global_warned = FALSE;
+        }
+    } else if (g_strcmp0(interface, zaether_ipc_manager_v2_interface.name) == 0 && !aether_manager_v2) {
+        uint32_t bind_version = version < 2 ? version : 2;
+        aether_manager_v2 = wl_registry_bind(registry, name, &zaether_ipc_manager_v2_interface, bind_version);
+        if (aether_manager_v2) {
+            zaether_ipc_manager_v2_add_listener(aether_manager_v2, &aether_manager_v2_listener, NULL);
+            aether_global_warned = FALSE;
 
-    uint32_t bind_version = version < 1 ? version : 1;
-    aether_manager = wl_registry_bind(registry, name, &aether_ipc_manager_v1_interface, bind_version);
-    if (aether_manager) {
-        aether_ipc_manager_v1_add_listener(aether_manager, &aether_manager_listener, NULL);
-        aether_global_warned = FALSE;
+            for (GList *l = aether_outputs; l != NULL; l = l->next) {
+                struct wl_output *output = l->data;
+                struct zaether_ipc_output_v2 *aether_output = zaether_ipc_manager_v2_get_output(aether_manager_v2, output);
+                zaether_ipc_output_v2_add_listener(aether_output, &aether_output_v2_listener, NULL);
+                aether_output_v2_objects = g_list_append(aether_output_v2_objects, aether_output);
+            }
+        }
+    } else if (g_strcmp0(interface, "wl_output") == 0) {
+        struct wl_output *output = wl_registry_bind(registry, name, &wl_output_interface, 1);
+        aether_outputs = g_list_append(aether_outputs, output);
+        if (aether_manager_v2) {
+            struct zaether_ipc_output_v2 *aether_output = zaether_ipc_manager_v2_get_output(aether_manager_v2, output);
+            zaether_ipc_output_v2_add_listener(aether_output, &aether_output_v2_listener, NULL);
+            aether_output_v2_objects = g_list_append(aether_output_v2_objects, aether_output);
+        }
     }
 }
 
@@ -377,6 +461,27 @@ static void disconnect_aether_ipc(void) {
     if (aether_manager) {
         aether_ipc_manager_v1_destroy(aether_manager);
         aether_manager = NULL;
+    }
+
+    if (aether_manager_v2) {
+        zaether_ipc_manager_v2_destroy(aether_manager_v2);
+        aether_manager_v2 = NULL;
+    }
+
+    if (aether_output_v2_objects) {
+        for (GList *l = aether_output_v2_objects; l != NULL; l = l->next) {
+            zaether_ipc_output_v2_destroy((struct zaether_ipc_output_v2 *)l->data);
+        }
+        g_list_free(aether_output_v2_objects);
+        aether_output_v2_objects = NULL;
+    }
+
+    if (aether_outputs) {
+        for (GList *l = aether_outputs; l != NULL; l = l->next) {
+            wl_output_destroy((struct wl_output *)l->data);
+        }
+        g_list_free(aether_outputs);
+        aether_outputs = NULL;
     }
 
     if (aether_registry) {
@@ -426,9 +531,9 @@ static gboolean connect_aether_ipc(void) {
         return FALSE;
     }
 
-    if (!aether_manager) {
+    if (!aether_manager && !aether_manager_v2) {
         if (!aether_global_warned) {
-            g_warning("[OSD] aether_ipc_manager_v1 not advertised; Aether keyboard OSD disabled");
+            g_warning("[OSD] aether_ipc_manager_v1/v2 not advertised; Aether keyboard OSD disabled");
             aether_global_warned = TRUE;
         }
         disconnect_aether_ipc();
