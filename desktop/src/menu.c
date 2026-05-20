@@ -254,7 +254,18 @@ void on_bg_paste(GtkWidget *item, gpointer data) {
 void on_change_wallpaper(GtkWidget *item, gpointer data) {
     (void)item;
     (void)data;
-    g_spawn_command_line_async("vaxp-setbg", NULL);
+    
+    char *exe_path = g_file_read_link("/proc/self/exe", NULL);
+    if (exe_path) {
+        char *dir = g_path_get_dirname(exe_path);
+        char *cmd = g_strdup_printf("%s/vaxp-setbg", dir);
+        g_spawn_command_line_async(cmd, NULL);
+        g_free(cmd);
+        g_free(dir);
+        g_free(exe_path);
+    } else {
+        g_spawn_command_line_async("vaxp-setbg", NULL);
+    }
 }
 
 void on_create_folder(GtkWidget *item, gpointer data) {
