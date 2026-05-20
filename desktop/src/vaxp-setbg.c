@@ -277,6 +277,9 @@ int main(int argc, char *argv[]) {
         "window, window.background, dialog {"
         "  background-color: rgba(0,0,0,0.3);"
         "  background-image: none; }"
+        "notebook, notebook > header, notebook stack, scrolledwindow, viewport, flowbox {"
+        "  background-color: transparent;"
+        "  background-image: none; border: none; box-shadow: none; }"
         "label { color: white; }"
         "notebook tab { color: white; }"
         "notebook tab:checked { color: #aaddff; font-weight: bold; }",
