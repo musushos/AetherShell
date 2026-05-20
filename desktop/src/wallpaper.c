@@ -183,9 +183,9 @@ void load_saved_wallpaper(void) {
         }
         video_wallpaper_load(path);
     } else {
-        /* Switching to static image — fully free mpv resources */
+        /* Switching back from video to image */
         if (video_wallpaper_is_active())
-            video_wallpaper_destroy();
+            video_wallpaper_stop();
         load_wallpaper(path);
     }
 

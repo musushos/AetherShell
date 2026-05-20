@@ -20,12 +20,8 @@ gboolean video_wallpaper_init(GtkWidget *icon_layout);
 /* Load and loop a video file as wallpaper. */
 void video_wallpaper_load(const char *path);
 
-/* Stop playback (mpv stays warm in memory for quick restart). */
+/* Stop playback and release resources. */
 void video_wallpaper_stop(void);
-
-/* Full teardown: frees mpv handle, render context, and frame buffer. */
-void video_wallpaper_destroy(void);
-
 
 /* TRUE if a video is currently playing. */
 gboolean video_wallpaper_is_active(void);

@@ -228,46 +228,6 @@ void video_wallpaper_stop(void)
     g_print("[VideoWallpaper] Stopped\n");
 }
 
-/*
- * video_wallpaper_destroy:
- *   Full teardown — frees the mpv handle, render context, and frame buffer.
- *   Call this when switching permanently to a static image wallpaper.
- *   After this, video_wallpaper_init() must be called again to use video.
- */
-void video_wallpaper_destroy(void)
-{
-    /* Stop playback first */
-    if (g_mpv && g_active) {
-        const char *cmd[] = { "stop", NULL };
-        mpv_command(g_mpv, cmd);
-    }
-
-    g_active      = FALSE;
-    g_frame_ready = FALSE;
-    g_free(g_cur_path);
-    g_cur_path = NULL;
-
-    /* Free render context before destroying handle */
-    if (g_mpv_ctx) {
-        mpv_render_context_free(g_mpv_ctx);
-        g_mpv_ctx = NULL;
-    }
-
-    if (g_mpv) {
-        mpv_destroy(g_mpv);
-        g_mpv = NULL;
-    }
-
-    /* Free the frame buffer */
-    g_free(g_framebuf);
-    g_framebuf   = NULL;
-    g_framebuf_w = 0;
-    g_framebuf_h = 0;
-
-    if (g_layout) gtk_widget_queue_draw(g_layout);
-    g_print("[VideoWallpaper] Destroyed — all resources freed\n");
-}
-
 gboolean video_wallpaper_is_active(void)
 {
     return g_active;
