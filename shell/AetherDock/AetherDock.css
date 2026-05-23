@@ -1,0 +1,326 @@
+/* الإعدادات العامة */
+#AetherDock-dock-box {
+    background-color: transparent;
+    font-family: "Segoe UI", sans-serif;
+    font-weight: 600;
+}
+
+/* ------------------------------------------------ */
+/* 1. الدوك المصغر (Slim Dock) - تم تقليل الأحجام */
+/* ------------------------------------------------ */
+#AetherDock-dock-box {
+    background-color: rgba(0, 0, 0, 0.300);
+    border: 1px solid rgba(24, 24, 24, 0.185);
+
+    /* تقليل الانحناء ليناسب الحجم الصغير */
+    border-radius: 16px;
+
+    /* تصغير الهوامش الداخلية بنسبة 50% تقريباً */
+    padding: 4px 6px;
+
+    margin: 0px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0);
+}
+
+/* أزرار الدوك */
+#AetherDock-dock-box button {
+    background: rgba(0, 0, 0, 0.300);
+    border: none;
+
+    /* تقليل حشوة الزر نفسه ليصغر الحجم الكلي */
+    padding: 2px;
+
+    border-radius: 12px;
+    margin: 0px;
+    /* تقليل المسافة بين الأيقونات */
+    color: rgb(255, 255, 255);
+    transition: all 0.2s ease;
+}
+
+#AetherDock-dock-box button:hover {
+    background-color: rgb(40, 40, 50);
+    /* box-shadow: 0 0 5px rgb(0, 252, 210); */
+}
+
+#AetherDock-dock-box button:active {
+    /* background-color: rgb(0, 252, 210); */
+    color: rgb(0, 0, 0);
+    -gtk-icon-transform: scale(0.9);
+}
+
+/* Running App Indicator */
+/* Running App Indicator */
+.AetherDock-running-app {
+    background-color: transparent;
+    border: none;
+}
+
+#AetherDock-indicator-dot {
+    opacity: 0;
+    /* Size handled by set_size_request in C, but good to reinforce */
+    min-height: 6px;
+    min-width: 6px;
+    background-color: transparent;
+    border-radius: 100%;
+    transition: all 0.3s ease;
+}
+
+.AetherDock-running-app #AetherDock-indicator-dot {
+    opacity: 1;
+    background-color: #00fcd2;
+    box-shadow: 0 0 4px #00fcd2;
+}
+
+.AetherDock-running-app:hover {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+/* Pinned App (Not Running) */
+.AetherDock-pinned-app {
+    opacity: 0.7;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.AetherDock-pinned-app:hover {
+    opacity: 1.0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+/* ------------------------------------------------ */
+/* 2. القاذف الشبح (Ghost Launcher) - شفافية كاملة */
+/* ------------------------------------------------ */
+
+#AetherDock-launcher-#AetherDock-dock-box {
+    /* شفافية كاملة للنافذة الأم */
+    background-color: rgba(0, 0, 0, 0);
+    border: none;
+}
+
+#AetherDock-launcher-window scrolledwindow,
+#AetherDock-launcher-window scrolledwindow viewport {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+#AetherDock-launcher-window grid {
+    /* خلفية شفافة تماماً (أو شبه معدومة إذا أردت ظلاً خفيفاً جداً) */
+    background-color: rgba(0, 0, 0, 0);
+
+    /* الإبقاء على الحدود فقط ليعرف المستخدم حدود القائمة */
+    /* border: 1px solid rgba(0, 0, 0, 0); */
+
+    border-radius: 24px;
+    padding: 30px;
+    margin: 30px;
+}
+
+
+/* ------------------------------------------------ */
+/* أزرار التطبيقات (App Grid) */
+/* ------------------------------------------------ */
+
+#AetherDock-app-grid-#AetherDock-dock-box button {
+    background-color: transparent;
+    border: 1px solid transparent;
+    box-shadow: none;
+    outline: none;
+    background-image: none;
+    -gtk-icon-shadow: none;
+    -gtk-icon-effect: none;
+
+    /* تصغير الأزرار في القاذف أيضاً لتتناسب مع الدوك */
+    padding: 10px;
+    border-radius: 14px;
+    margin: 6px;
+    min-width: 80px;
+    /* تصغير العرض */
+    min-height: 80px;
+    /* تصغير الطول */
+
+    color: rgb(255, 255, 255);
+    font-weight: bold;
+}
+
+#AetherDock-app-grid-#AetherDock-dock-box button:hover {
+    /* عند الهوفر: خلفية خفيفة جداً لتبرز الأيقونة */
+    background-color: rgba(0, 0, 0, 0);
+    border: 1px solid rgba(49, 182, 192, 0.459);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0);
+    -gtk-icon-transform: scale(1.1);
+}
+
+
+#AetherDock-app-grid-#AetherDock-dock-box button:active {
+    background-color: rgba(49, 182, 192, 0.459);
+    color: rgb(0, 0, 0);
+    -gtk-icon-transform: scale(0.9);
+}
+
+/* ------------------------------------------------ */
+/* باقي العناصر (كما هي) */
+/* ------------------------------------------------ */
+
+#AetherDock-launcher-#AetherDock-dock-box button {
+    background-color: rgba(0, 0, 0, 0);
+    border: 1px solid rgba(0, 0, 0, 0);
+    border-radius: 12px;
+    /* تصغير الانحناء */
+    margin-right: 1px;
+    padding: 0px;
+    /* تصغير الزر */
+}
+
+#AetherDock-launcher-#AetherDock-dock-box button:hover {
+    background-color: rgba(0, 0, 0, 0.192);
+    border: 1px solid rgba(0, 252, 210, 0.075);
+    box-shadow: 0 0 4px rgba(0, 252, 210, 0.11);
+}
+
+#AetherDock-launcher-#AetherDock-dock-box button:active {
+    background-color: rgb(0, 252, 210);
+    color: rgb(0, 0, 0);
+}
+
+/* ------------------------------------------------ */
+/* أزرار سلة المهملات والأقراص - بدون خلفية عند التمرير */
+/* ------------------------------------------------ */
+#AetherDock-trash-button,
+#AetherDock-drive-#AetherDock-dock-box button {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+#AetherDock-trash-#AetherDock-dock-box button:hover,
+#AetherDock-drive-#AetherDock-dock-box button:hover {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    /* Optional: Slight transform on hover without background */
+    -gtk-icon-transform: scale(1.1);
+}
+
+#AetherDock-trash-#AetherDock-dock-box button:active,
+#AetherDock-drive-#AetherDock-dock-box button:active {
+    background-color: transparent;
+    -gtk-icon-transform: scale(0.9);
+}
+
+window.popup,
+window.popup decoration,
+window.background.popup,
+window.background.popup decoration {
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: transparent;
+    background-image: none;
+}
+
+menu#AetherDock-dock-context-menu,
+menu.AetherDock-dock-context-menu {
+    background-color: rgba(8, 10, 14, 0.78);
+    background-image: none;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 12px;
+    box-shadow: none;
+    margin: 0;
+    padding: 8px;
+}
+
+menu#AetherDock-dock-context-menu box,
+menu.AetherDock-dock-context-menu box {
+    margin: 0;
+    padding: 0;
+}
+
+menu#AetherDock-dock-context-menu decoration,
+menu.AetherDock-dock-context-menu decoration {
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    background-image: none;
+}
+
+menu#AetherDock-dock-context-menu menuitem,
+menu.AetherDock-dock-context-menu menuitem,
+menu#AetherDock-dock-context-menu menuitem.dock-AetherDock-context-menu-item,
+menu.AetherDock-dock-context-menu menuitem.dock-AetherDock-context-menu-item {
+    background: transparent;
+    background-image: none;
+    border: none;
+    border-radius: 8px;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
+    color: rgb(255, 255, 255);
+}
+
+menu#AetherDock-dock-context-menu menuitem > label,
+menu.AetherDock-dock-context-menu menuitem > label {
+    margin: 0;
+    padding: 6px 10px;
+}
+
+menu#AetherDock-dock-context-menu menuitem:hover,
+menu.AetherDock-dock-context-menu menuitem:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: rgb(255, 255, 255);
+}
+
+menu#AetherDock-dock-context-menu separator,
+menu.AetherDock-dock-context-menu separator {
+    background-color: rgba(255, 255, 255, 0.10);
+    min-height: 1px;
+    margin: 2px 0;
+    padding: 0;
+}
+
+#AetherDock-system-separator {
+    background-color: rgba(255, 255, 255, 0.14);
+    min-width: 1px;
+    min-height: 28px;
+    margin: 0 2px;
+}
+
+#AetherDock-context-menu-#AetherDock-dock-box {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+#AetherDock-context-menu-frame {
+    background-color: rgba(0, 0, 0, 0);
+    padding: 0;
+}
+
+#AetherDock-context-menu-box {
+    background-color: rgba(8, 10, 14, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
+    padding: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+#AetherDock-context-menu-item {
+    background-color: rgba(0, 0, 0, 0);
+    border: none;
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: rgb(255, 255, 255);
+}
+
+#AetherDock-context-menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+#AetherDock-context-menu-item:active {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+#AetherDock-context-menu-separator {
+    background-color: rgba(255, 255, 255, 0.10);
+    min-height: 1px;
+}
