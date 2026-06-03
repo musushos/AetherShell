@@ -1,5 +1,6 @@
 #include "osd_logic_brightness.h"
 #include "osd_logic_state.h"
+#include "osd_sound.h"
 #include <glib.h>
 #include <dirent.h>
 #include <limits.h>
@@ -117,6 +118,13 @@ static void refresh_brightness_osd(gboolean force_show) {
     if (!force_show &&
         osd_logic_state_get_brightness() == percentage &&
         osd_logic_state_get_type() == OSD_BRIGHTNESS) {
+        if (percentage == 100) {
+            osd_sound_play(OSD_SOUND_LIMIT_HIGH);
+            osd_logic_state_show_osd();
+        } else if (percentage == 0) {
+            osd_sound_play(OSD_SOUND_LIMIT_LOW);
+            osd_logic_state_show_osd();
+        }
         return;
     }
 

@@ -6,6 +6,7 @@
 #endif
 #include <time.h>
 #include "notify_ui.h"
+#include "osd_sound.h"
 
 #define DEFAULT_TIMEOUT 5000
 #define MAX_HISTORY 50
@@ -250,6 +251,7 @@ static guint32 create_new_notification(const char *app_name, guint32 replaces_id
         }
         if (timeout <= 0) timeout = DEFAULT_TIMEOUT;
         existing_notification->timeout_source = g_timeout_add(timeout, on_timeout, GUINT_TO_POINTER(existing_notification->id));
+        osd_sound_play(OSD_SOUND_NOTIFICATION);
         emit_history_updated_signal(NULL);
         return existing_notification->id;
     }
@@ -267,6 +269,7 @@ static guint32 create_new_notification(const char *app_name, guint32 replaces_id
     add_to_history(n->id, app_name, icon, summary, body);
     
     notify_ui_reposition(active_notifications, notify_use_layer_shell);
+    osd_sound_play(OSD_SOUND_NOTIFICATION);
     
     // إرسال إشارة تحديث السجل
     emit_history_updated_signal(NULL);

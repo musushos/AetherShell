@@ -1,5 +1,6 @@
 #include "osd_logic_audio.h"
 #include "osd_logic_state.h"
+#include "osd_sound.h"
 #include <glib.h>
 #include <pulse/glib-mainloop.h>
 #include <pulse/pulseaudio.h>
@@ -153,4 +154,8 @@ void osd_logic_audio_setup_pulseaudio(void) {
 
     pa_context_set_state_callback(pa_ctx, context_state_cb, NULL);
     pa_context_connect(pa_ctx, NULL, PA_CONTEXT_NOFLAGS, NULL);
+}
+
+pa_context *osd_logic_audio_get_context(void) {
+    return pa_ctx;
 }

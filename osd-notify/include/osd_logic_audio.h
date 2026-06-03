@@ -3,4 +3,7 @@
 
 void osd_logic_audio_setup_pulseaudio(void);
 
+struct pa_context;
+struct pa_context *osd_logic_audio_get_context(void);
+
 #endif
