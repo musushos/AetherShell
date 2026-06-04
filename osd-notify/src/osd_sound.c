@@ -62,32 +62,38 @@ static const char* get_sound_file_path(OsdSoundEvent event) {
     }
 
     // Try multiple paths:
-    // 1. Compile-time PREFIX /share/osd-notify/Sound/
+    // 1. Primary sound path
+    g_snprintf(path, sizeof(path), "/etc/vaxp/Sound/%s", filename);
+    if (g_file_test(path, G_FILE_TEST_EXISTS)) {
+        return path;
+    }
+
+    // 2. Compile-time PREFIX /share/osd-notify/Sound/
     g_snprintf(path, sizeof(path), PREFIX "/share/osd-notify/Sound/%s", filename);
     if (g_file_test(path, G_FILE_TEST_EXISTS)) {
         return path;
     }
 
-    // 2. Local Sound/ directory (for development)
+    // 3. Local Sound/ directory (for development)
     g_snprintf(path, sizeof(path), "./Sound/%s", filename);
     if (g_file_test(path, G_FILE_TEST_EXISTS)) {
         return path;
     }
 
-    // 3. Flat Sound/ path
+    // 4. Flat Sound/ path
     g_snprintf(path, sizeof(path), "Sound/%s", filename);
     if (g_file_test(path, G_FILE_TEST_EXISTS)) {
         return path;
     }
 
-    // 4. Default /usr/share/osd-notify/Sound/
+    // 5. Default /usr/share/osd-notify/Sound/
     g_snprintf(path, sizeof(path), "/usr/share/osd-notify/Sound/%s", filename);
     if (g_file_test(path, G_FILE_TEST_EXISTS)) {
         return path;
     }
 
     // Fallback path
-    g_snprintf(path, sizeof(path), "Sound/%s", filename);
+    g_snprintf(path, sizeof(path), "/etc/vaxp/Sound/%s", filename);
     return path;
 }
 

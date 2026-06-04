@@ -40,8 +40,8 @@ clean:
 install: $(BIN)
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 $(BIN) $(DESTDIR)$(BINDIR)/$(BIN)
-	install -d $(DESTDIR)$(PREFIX)/share/osd-notify/Sound
-	install -m 644 Sound/*.mp3 $(DESTDIR)$(PREFIX)/share/osd-notify/Sound/
+	install -d $(DESTDIR)/etc/vaxp/Sound
+	install -m 644 Sound/*.mp3 $(DESTDIR)/etc/vaxp/Sound/
 
 install-service:
 	install -d $(DESTDIR)$(USER_UNIT_DIR)
@@ -49,6 +49,7 @@ install-service:
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/$(BIN)
+	rm -rf $(DESTDIR)/etc/vaxp/Sound
 
 uninstall-service:
 	rm -f $(DESTDIR)$(USER_UNIT_DIR)/$(SERVICE)
