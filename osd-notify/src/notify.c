@@ -73,7 +73,7 @@ void clear_history();
 static NotificationItem *find_history_item_by_id(guint32 id);
 static VenomNotification *find_active_notification_by_id(guint32 id);
 static void on_ui_action(guint32 id, const char *action_key, gpointer user_data);
-static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, gint timeout);
+static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, GVariant *hints, gint timeout);
 static gboolean notify_is_wayland_session(void);
 
 // --- إدارة السجل (History Logic) ---
@@ -199,8 +199,102 @@ void close_notification(guint32 id, guint reason) {
     }
 }
 
+// --- التحقق من كون الإشعار يمثل خطأ أو تحذير ---
+static gboolean is_error_or_warning(const char *summary, const char *body, const char *icon, GVariant *hints) {
+    // 1. التحقق من نصوص العنوان والمحتوى
+    if (summary) {
+        gchar *lower_summary = g_utf8_strdown(summary, -1);
+        if (g_strrstr(lower_summary, "error") || 
+            g_strrstr(lower_summary, "warning") || 
+            g_strrstr(lower_summary, "fail") || 
+            g_strrstr(lower_summary, "critical") || 
+            g_strrstr(lower_summary, "خطأ") || 
+            g_strrstr(lower_summary, "تحذير") || 
+            g_strrstr(lower_summary, "فشل") || 
+            g_strrstr(lower_summary, "مشكلة")) {
+            g_free(lower_summary);
+            return TRUE;
+        }
+        g_free(lower_summary);
+    }
+    if (body) {
+        gchar *lower_body = g_utf8_strdown(body, -1);
+        if (g_strrstr(lower_body, "error") || 
+            g_strrstr(lower_body, "warning") || 
+            g_strrstr(lower_body, "fail") || 
+            g_strrstr(lower_body, "critical") || 
+            g_strrstr(lower_body, "خطأ") || 
+            g_strrstr(lower_body, "تحذير") || 
+            g_strrstr(lower_body, "فشل") || 
+            g_strrstr(lower_body, "مشكلة")) {
+            g_free(lower_body);
+            return TRUE;
+        }
+        g_free(lower_body);
+    }
+
+    // 2. التحقق من اسم الأيقونة
+    if (icon) {
+        gchar *lower_icon = g_utf8_strdown(icon, -1);
+        if (g_strrstr(lower_icon, "error") || 
+            g_strrstr(lower_icon, "warning") || 
+            g_strrstr(lower_icon, "alert") || 
+            g_strrstr(lower_icon, "dialog-error") || 
+            g_strrstr(lower_icon, "dialog-warning") || 
+            g_strrstr(lower_icon, "urgent")) {
+            g_free(lower_icon);
+            return TRUE;
+        }
+        g_free(lower_icon);
+    }
+
+    // 3. التحقق من التلميحات (hints) مثل الأهمية والتصنيف
+    if (hints) {
+        GVariantIter iter;
+        gchar *key;
+        GVariant *value;
+        g_variant_iter_init(&iter, hints);
+        while (g_variant_iter_next(&iter, "{sv}", &key, &value)) {
+            if (g_strcmp0(key, "urgency") == 0) {
+                guchar urgency = 0;
+                if (g_variant_is_of_type(value, G_VARIANT_TYPE_BYTE)) {
+                    urgency = g_variant_get_byte(value);
+                } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)) {
+                    urgency = (guchar)g_variant_get_int32(value);
+                } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                    const gchar *urg_str = g_variant_get_string(value, NULL);
+                    if (g_strcmp0(urg_str, "critical") == 0 || g_strcmp0(urg_str, "2") == 0) {
+                        urgency = 2;
+                    }
+                }
+                if (urgency == 2) { // Critical / Error / Warning
+                    g_free(key);
+                    g_variant_unref(value);
+                    return TRUE;
+                }
+            } else if (g_strcmp0(key, "category") == 0) {
+                if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                    const gchar *cat = g_variant_get_string(value, NULL);
+                    if (g_strrstr(cat, "error") || g_strrstr(cat, "warning")) {
+                        g_free(key);
+                        g_variant_unref(value);
+                        return TRUE;
+                    }
+                }
+            }
+            g_free(key);
+            g_variant_unref(value);
+        }
+    }
+
+    return FALSE;
+}
+
 // --- إنشاء الإشعار وعرضه ---
-static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, gint timeout) {
+static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, GVariant *hints, gint timeout) {
+    // تحديد نوع الصوت المناسب (تنبيه عادي أم تحذير/خطأ)
+    OsdSoundEvent sound_event = is_error_or_warning(summary, body, icon, hints) ? OSD_SOUND_ERROR : OSD_SOUND_NOTIFICATION;
+
     // إذا كان وضع عدم الإزعاج مفعل، أضف للسجل بشكل صامت فقط
     if (do_not_disturb) {
         NotificationItem *existing_item = replaces_id ? find_history_item_by_id(replaces_id) : NULL;
@@ -251,7 +345,7 @@ static guint32 create_new_notification(const char *app_name, guint32 replaces_id
         }
         if (timeout <= 0) timeout = DEFAULT_TIMEOUT;
         existing_notification->timeout_source = g_timeout_add(timeout, on_timeout, GUINT_TO_POINTER(existing_notification->id));
-        osd_sound_play(OSD_SOUND_NOTIFICATION);
+        osd_sound_play(sound_event);
         emit_history_updated_signal(NULL);
         return existing_notification->id;
     }
@@ -269,7 +363,7 @@ static guint32 create_new_notification(const char *app_name, guint32 replaces_id
     add_to_history(n->id, app_name, icon, summary, body);
     
     notify_ui_reposition(active_notifications, notify_use_layer_shell);
-    osd_sound_play(OSD_SOUND_NOTIFICATION);
+    osd_sound_play(sound_event);
     
     // إرسال إشارة تحديث السجل
     emit_history_updated_signal(NULL);
@@ -299,7 +393,7 @@ static void handle_method_call(GDBusConnection *connection, const gchar *sender,
                       &app_name, &replaces_id, &app_icon, 
                       &summary, &body, &actions, &hints, &expire_timeout);
 
-        guint32 notification_id = create_new_notification(app_name, replaces_id, summary, body, app_icon, actions, expire_timeout);
+        guint32 notification_id = create_new_notification(app_name, replaces_id, summary, body, app_icon, actions, hints, expire_timeout);
         
         // إخبار الكونترول سنتر بتحديث السجل
         emit_history_updated_signal(connection);

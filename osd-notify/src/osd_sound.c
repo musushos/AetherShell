@@ -57,6 +57,9 @@ static const char* get_sound_file_path(OsdSoundEvent event) {
         case OSD_SOUND_LIMIT_LOW:
             filename = "u_4quckyrjhw-notification-sound-349341.mp3";
             break;
+        case OSD_SOUND_ERROR:
+            filename = "47313572-notification-alert-269289.mp3";
+            break;
         default:
             return NULL;
     }
