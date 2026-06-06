@@ -19,6 +19,12 @@ struct _VenomLauncherWindow {
     GtkWidget    *search_bar;
     GtkWidget    *app_grid;
     GtkWidget    *root_overlay;
+
+    char         *wallpaper_path;
+    GdkPixbuf    *wallpaper_pixbuf;
+    cairo_surface_t *wallpaper_surface;
+    int           cached_width;
+    int           cached_height;
 };
 
 G_DEFINE_TYPE (VenomLauncherWindow, venom_launcher_window,
@@ -74,10 +80,64 @@ setup_transparency (GtkWidget *widget)
  * Window background
  * ------------------------------------------------------------------------- */
 
+static void
+load_wallpaper (VenomLauncherWindow *self)
+{
+    const char *config_dir = g_get_user_config_dir ();
+    char *wallpaper_file_path = g_build_filename (config_dir, "vaxp", "wallpaper", NULL);
+
+    gboolean file_changed = FALSE;
+    char *new_path = NULL;
+    GError *error = NULL;
+
+    if (g_file_get_contents (wallpaper_file_path, &new_path, NULL, &error)) {
+        new_path = g_strstrip (new_path);
+        if (!self->wallpaper_path || strcmp (self->wallpaper_path, new_path) != 0) {
+            file_changed = TRUE;
+        }
+    } else {
+        if (self->wallpaper_path != NULL) {
+            file_changed = TRUE;
+        }
+        if (error) g_error_free (error);
+    }
+    g_free (wallpaper_file_path);
+
+    if (file_changed) {
+        if (self->wallpaper_surface) {
+            cairo_surface_destroy (self->wallpaper_surface);
+            self->wallpaper_surface = NULL;
+        }
+        if (self->wallpaper_pixbuf) {
+            g_object_unref (self->wallpaper_pixbuf);
+            self->wallpaper_pixbuf = NULL;
+        }
+        if (self->wallpaper_path) {
+            g_free (self->wallpaper_path);
+            self->wallpaper_path = NULL;
+        }
+
+        if (new_path && strlen (new_path) > 0) {
+            GError *pixbuf_error = NULL;
+            self->wallpaper_pixbuf = gdk_pixbuf_new_from_file (new_path, &pixbuf_error);
+            if (!self->wallpaper_pixbuf) {
+                if (pixbuf_error) g_error_free (pixbuf_error);
+            } else {
+                self->wallpaper_path = g_strdup (new_path);
+            }
+        }
+    }
+
+    if (new_path) {
+        g_free (new_path);
+    }
+}
+
 static gboolean
 on_window_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data)
 {
     (void) user_data;
+    VenomLauncherWindow *self = VENOM_LAUNCHER_WINDOW (widget);
 
     GtkAllocation alloc;
     const double radius = 24.0;
@@ -96,9 +156,54 @@ on_window_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data)
     cairo_arc (cr, radius, radius, radius, G_PI, 3.0 * G_PI / 2.0);
     cairo_close_path (cr);
 
-    /* Keep the window itself translucent so the compositor can blur behind it. */
-    cairo_set_source_rgba (cr, 0.08, 0.09, 0.12, 0.38);
-    cairo_fill_preserve (cr);
+    if (self->wallpaper_pixbuf) {
+        if (!self->wallpaper_surface || self->cached_width != alloc.width || self->cached_height != alloc.height) {
+            if (self->wallpaper_surface) {
+                cairo_surface_destroy (self->wallpaper_surface);
+                self->wallpaper_surface = NULL;
+            }
+
+            self->cached_width = alloc.width;
+            self->cached_height = alloc.height;
+
+            int wp = gdk_pixbuf_get_width (self->wallpaper_pixbuf);
+            int hp = gdk_pixbuf_get_height (self->wallpaper_pixbuf);
+
+            double scale_x = (double)alloc.width / wp;
+            double scale_y = (double)alloc.height / hp;
+            double scale = scale_x > scale_y ? scale_x : scale_y;
+
+            int scaled_w = (int)(wp * scale);
+            int scaled_h = (int)(hp * scale);
+
+            GdkPixbuf *scaled_pixbuf = gdk_pixbuf_scale_simple (self->wallpaper_pixbuf, scaled_w, scaled_h, GDK_INTERP_BILINEAR);
+            if (scaled_pixbuf) {
+                self->wallpaper_surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, alloc.width, alloc.height);
+                cairo_t *temp_cr = cairo_create (self->wallpaper_surface);
+
+                double offset_x = (alloc.width - scaled_w) / 2.0;
+                double offset_y = (alloc.height - scaled_h) / 2.0;
+
+                gdk_cairo_set_source_pixbuf (temp_cr, scaled_pixbuf, offset_x, offset_y);
+                cairo_paint (temp_cr);
+
+                cairo_destroy (temp_cr);
+                g_object_unref (scaled_pixbuf);
+            }
+        }
+
+        if (self->wallpaper_surface) {
+            cairo_save (cr);
+            cairo_clip_preserve (cr);
+            cairo_set_source_surface (cr, self->wallpaper_surface, 0, 0);
+            cairo_paint (cr);
+            cairo_restore (cr);
+        }
+    } else {
+        /* Keep the window itself translucent so the compositor can blur behind it. */
+        cairo_set_source_rgba (cr, 0.08, 0.09, 0.12, 0.38);
+        cairo_fill_preserve (cr);
+    }
 
     cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.12);
     cairo_set_line_width (cr, 1.2);
@@ -234,6 +339,12 @@ venom_launcher_window_finalize (GObject *obj)
     VenomLauncherWindow *self = VENOM_LAUNCHER_WINDOW (obj);
     if (self->apps)
         g_ptr_array_unref (self->apps);
+    if (self->wallpaper_path)
+        g_free (self->wallpaper_path);
+    if (self->wallpaper_pixbuf)
+        g_object_unref (self->wallpaper_pixbuf);
+    if (self->wallpaper_surface)
+        cairo_surface_destroy (self->wallpaper_surface);
     icon_loader_destroy ();
     G_OBJECT_CLASS (venom_launcher_window_parent_class)->finalize (obj);
 }
@@ -272,6 +383,13 @@ set_layer_shell_monitor (GtkWindow *win)
 static void
 venom_launcher_window_init (VenomLauncherWindow *self)
 {
+    self->wallpaper_path = NULL;
+    self->wallpaper_pixbuf = NULL;
+    self->wallpaper_surface = NULL;
+    self->cached_width = 0;
+    self->cached_height = 0;
+    load_wallpaper (self);
+
     GtkWindow *win = GTK_WINDOW (self);
     gboolean layer_shell_supported = gtk_layer_is_supported ();
 
@@ -376,6 +494,9 @@ venom_launcher_window_show_launcher (VenomLauncherWindow *win)
 
     venom_search_bar_clear (VENOM_SEARCH_BAR (win->search_bar));
     venom_app_grid_set_filter (VENOM_APP_GRID (win->app_grid), NULL);
+
+    load_wallpaper (win);
+    gtk_widget_queue_draw (GTK_WIDGET (win));
 
     gtk_widget_show_all (GTK_WIDGET (win));
     gtk_window_present  (GTK_WINDOW (win));
