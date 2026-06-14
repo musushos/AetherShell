@@ -16,6 +16,8 @@
 #include <limits.h>
 #include <libgen.h>
 #include <sys/inotify.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#include <math.h>
 #include "config.h"
 #include "ext-idle-notify-v1-client-protocol.h"
 #include "log.h"
@@ -32,6 +34,9 @@ static struct wl_seat *seat = NULL;
 
 static int inotify_fd = -1;
 static struct wl_event_source *inotify_source = NULL;
+
+static int wallpaper_watch_fd = -1;
+static struct wl_event_source *wallpaper_watch_source = NULL;
 
 struct aetheridle_state {
 	struct wl_display *display;
@@ -147,6 +152,15 @@ static void aetheridle_finish() {
 	if (inotify_fd >= 0) {
 		close(inotify_fd);
 		inotify_fd = -1;
+	}
+
+	if (wallpaper_watch_source) {
+		wl_event_source_remove(wallpaper_watch_source);
+		wallpaper_watch_source = NULL;
+	}
+	if (wallpaper_watch_fd >= 0) {
+		close(wallpaper_watch_fd);
+		wallpaper_watch_fd = -1;
 	}
 }
 
@@ -1207,6 +1221,339 @@ static int inotify_event_handler(int fd, uint32_t mask, void *data) {
 	return 0;
 }
 
+struct ImageBuffer {
+	int width;
+	int height;
+	int stride;
+	int channels;
+	unsigned char *data;
+};
+
+static inline float clamp(float val, float min, float max) {
+	if (val < min) return min;
+	if (val > max) return max;
+	return val;
+}
+
+static void downsample(const struct ImageBuffer *src, struct ImageBuffer *dst, int offset) {
+	for (int y = 0; y < dst->height; y++) {
+		for (int x = 0; x < dst->width; x++) {
+			int cx = x * 2;
+			int cy = y * 2;
+
+			int coords[5][2] = {
+				{ cx, cy },
+				{ cx - offset, cy - offset },
+				{ cx + offset, cy - offset },
+				{ cx - offset, cy + offset },
+				{ cx + offset, cy + offset }
+			};
+
+			int r_sum = 0, g_sum = 0, b_sum = 0, a_sum = 0;
+			int count = 0;
+
+			for (int i = 0; i < 5; i++) {
+				int sx = coords[i][0];
+				int sy = coords[i][1];
+
+				if (sx < 0) sx = 0;
+				if (sx >= src->width) sx = src->width - 1;
+				if (sy < 0) sy = 0;
+				if (sy >= src->height) sy = src->height - 1;
+
+				unsigned char *p = src->data + sy * src->stride + sx * src->channels;
+				r_sum += p[0];
+				g_sum += p[1];
+				b_sum += p[2];
+				if (src->channels == 4) {
+					a_sum += p[3];
+				}
+				count++;
+			}
+
+			unsigned char *out = dst->data + y * dst->stride + x * dst->channels;
+			out[0] = r_sum / count;
+			out[1] = g_sum / count;
+			out[2] = b_sum / count;
+			if (dst->channels == 4) {
+				out[3] = a_sum / count;
+			}
+		}
+	}
+}
+
+static void upsample(const struct ImageBuffer *src, struct ImageBuffer *dst, int offset) {
+	for (int y = 0; y < dst->height; y++) {
+		for (int x = 0; x < dst->width; x++) {
+			float cx = x * 0.5f;
+			float cy = y * 0.5f;
+
+			struct {
+				float dx;
+				float dy;
+				int weight;
+			} samples[8] = {
+				{ -2.0f * offset, 0.0f, 1 },
+				{ 2.0f * offset, 0.0f, 1 },
+				{ 0.0f, -2.0f * offset, 1 },
+				{ 0.0f, 2.0f * offset, 1 },
+				{ -offset, -offset, 2 },
+				{ offset, -offset, 2 },
+				{ -offset, offset, 2 },
+				{ offset, offset, 2 }
+			};
+
+			float r_sum = 0, g_sum = 0, b_sum = 0, a_sum = 0;
+			int total_weight = 0;
+
+			for (int i = 0; i < 8; i++) {
+				float sx_f = cx + samples[i].dx;
+				float sy_f = cy + samples[i].dy;
+
+				int x0 = (int)floorf(sx_f);
+				int y0 = (int)floorf(sy_f);
+				int x1 = x0 + 1;
+				int y1 = y0 + 1;
+
+				float tx = sx_f - x0;
+				float ty = sy_f - y0;
+
+				if (x0 < 0) {
+					x0 = 0;
+				}
+				if (x0 >= src->width) {
+					x0 = src->width - 1;
+				}
+				if (x1 < 0) {
+					x1 = 0;
+				}
+				if (x1 >= src->width) {
+					x1 = src->width - 1;
+				}
+				if (y0 < 0) {
+					y0 = 0;
+				}
+				if (y0 >= src->height) {
+					y0 = src->height - 1;
+				}
+				if (y1 < 0) {
+					y1 = 0;
+				}
+				if (y1 >= src->height) {
+					y1 = src->height - 1;
+				}
+
+				unsigned char *p00 = src->data + y0 * src->stride + x0 * src->channels;
+				unsigned char *p10 = src->data + y0 * src->stride + x1 * src->channels;
+				unsigned char *p01 = src->data + y1 * src->stride + x0 * src->channels;
+				unsigned char *p11 = src->data + y1 * src->stride + x1 * src->channels;
+
+				float w00 = (1.0f - tx) * (1.0f - ty);
+				float w10 = tx * (1.0f - ty);
+				float w01 = (1.0f - tx) * ty;
+				float w11 = tx * ty;
+
+				float r = p00[0] * w00 + p10[0] * w10 + p01[0] * w01 + p11[0] * w11;
+				float g = p00[1] * w00 + p10[1] * w10 + p01[1] * w01 + p11[1] * w11;
+				float b = p00[2] * w00 + p10[2] * w10 + p01[2] * w01 + p11[2] * w11;
+
+				r_sum += r * samples[i].weight;
+				g_sum += g * samples[i].weight;
+				b_sum += b * samples[i].weight;
+
+				if (src->channels == 4) {
+					float a = p00[3] * w00 + p10[3] * w10 + p01[3] * w01 + p11[3] * w11;
+					a_sum += a * samples[i].weight;
+				}
+				total_weight += samples[i].weight;
+			}
+
+			unsigned char *out = dst->data + y * dst->stride + x * dst->channels;
+			out[0] = (unsigned char)clamp(r_sum / total_weight, 0, 255);
+			out[1] = (unsigned char)clamp(g_sum / total_weight, 0, 255);
+			out[2] = (unsigned char)clamp(b_sum / total_weight, 0, 255);
+			if (dst->channels == 4) {
+				out[3] = (unsigned char)clamp(a_sum / total_weight, 0, 255);
+			}
+		}
+	}
+}
+
+static void apply_dual_kawase_blur(GdkPixbuf *src_pixbuf, GdkPixbuf **dst_pixbuf) {
+	int w = gdk_pixbuf_get_width(src_pixbuf);
+	int h = gdk_pixbuf_get_height(src_pixbuf);
+
+	GdkPixbuf *rgba = gdk_pixbuf_add_alpha(src_pixbuf, FALSE, 0, 0, 0);
+	if (!rgba) return;
+
+	struct ImageBuffer L[3];
+	L[0].width = w;
+	L[0].height = h;
+	L[0].channels = 4;
+	L[0].stride = gdk_pixbuf_get_rowstride(rgba);
+	L[0].data = gdk_pixbuf_get_pixels(rgba);
+
+	for (int i = 0; i < 2; i++) {
+		L[i+1].width = L[i].width / 2;
+		L[i+1].height = L[i].height / 2;
+		if (L[i+1].width < 1) L[i+1].width = 1;
+		if (L[i+1].height < 1) L[i+1].height = 1;
+		L[i+1].channels = 4;
+		L[i+1].stride = L[i+1].width * 4;
+		L[i+1].data = malloc(L[i+1].stride * L[i+1].height);
+
+		int offset = 1;
+		downsample(&L[i], &L[i+1], offset);
+	}
+
+	struct ImageBuffer U[2];
+	for (int i = 1; i >= 0; i--) {
+		U[i].width = L[i].width;
+		U[i].height = L[i].height;
+		U[i].channels = 4;
+		U[i].stride = U[i].width * 4;
+		U[i].data = malloc(U[i].stride * U[i].height);
+
+		int offset = 1;
+		if (i == 1) {
+			upsample(&L[2], &U[1], offset);
+		} else {
+			upsample(&U[i+1], &U[i], offset);
+		}
+	}
+
+	*dst_pixbuf = gdk_pixbuf_new_from_data(
+		U[0].data,
+		GDK_COLORSPACE_RGB,
+		TRUE,
+		8,
+		U[0].width,
+		U[0].height,
+		U[0].stride,
+		NULL,
+		NULL
+	);
+
+	for (int i = 1; i < 3; i++) {
+		free(L[i].data);
+	}
+	for (int i = 1; i < 2; i++) {
+		free(U[i].data);
+	}
+	g_object_unref(rgba);
+}
+
+static char *get_vaxp_wallpaper_path(void) {
+	char *config_home = getenv("XDG_CONFIG_HOME");
+	char path[4096];
+	if (config_home && config_home[0] != '\0') {
+		snprintf(path, sizeof(path), "%s/vaxp/wallpaper", config_home);
+	} else {
+		char *home = getenv("HOME");
+		if (!home) {
+			return NULL;
+		}
+		snprintf(path, sizeof(path), "%s/.config/vaxp/wallpaper", home);
+	}
+	return strdup(path);
+}
+
+static char *get_vaxp_blurred_wallpaper_path(void) {
+	char *config_home = getenv("XDG_CONFIG_HOME");
+	char path[4096];
+	if (config_home && config_home[0] != '\0') {
+		snprintf(path, sizeof(path), "%s/vaxp/background", config_home);
+	} else {
+		char *home = getenv("HOME");
+		if (!home) {
+			return NULL;
+		}
+		snprintf(path, sizeof(path), "%s/.config/vaxp/background", home);
+	}
+	return strdup(path);
+}
+
+static void process_blurred_wallpaper(void) {
+	char *wp_cfg_path = get_vaxp_wallpaper_path();
+	if (!wp_cfg_path) return;
+
+	FILE *f = fopen(wp_cfg_path, "r");
+	if (!f) {
+		aetheridle_log(LOG_DEBUG, "No wallpaper configuration file found at %s", wp_cfg_path);
+		free(wp_cfg_path);
+		return;
+	}
+
+	char wp_path[4096];
+	if (fgets(wp_path, sizeof(wp_path), f)) {
+		size_t len = strlen(wp_path);
+		while (len > 0 && (wp_path[len-1] == '\n' || wp_path[len-1] == '\r' || wp_path[len-1] == ' ')) {
+			wp_path[--len] = '\0';
+		}
+
+		if (len > 0) {
+			aetheridle_log(LOG_INFO, "Processing blurred wallpaper for: %s", wp_path);
+
+			GError *error = NULL;
+			GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(wp_path, &error);
+			if (!pixbuf) {
+				aetheridle_log(LOG_ERROR, "Failed to load wallpaper image: %s", error ? error->message : "unknown error");
+				if (error) g_error_free(error);
+			} else {
+				int orig_w = gdk_pixbuf_get_width(pixbuf);
+				int orig_h = gdk_pixbuf_get_height(pixbuf);
+				GdkPixbuf *scaled = pixbuf;
+
+				if (orig_w > 1920 || orig_h > 1080) {
+					int target_w = 1920;
+					int target_h = (int)((double)orig_h * 1920.0 / orig_w);
+					if (target_h > 1080) {
+						target_h = 1080;
+						target_w = (int)((double)orig_w * 1080.0 / orig_h);
+					}
+					scaled = gdk_pixbuf_scale_simple(pixbuf, target_w, target_h, GDK_INTERP_BILINEAR);
+					g_object_unref(pixbuf);
+				}
+
+				if (scaled) {
+					GdkPixbuf *blurred = NULL;
+					apply_dual_kawase_blur(scaled, &blurred);
+					if (blurred) {
+						char *dst_path = get_vaxp_blurred_wallpaper_path();
+						if (dst_path) {
+							char *dir_copy = strdup(dst_path);
+							char *dir = dirname(dir_copy);
+
+							char mkdir_cmd[4096];
+							snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p \"%s\"", dir);
+							int r = system(mkdir_cmd);
+							(void)r;
+
+							free(dir_copy);
+
+							GError *save_error = NULL;
+							if (gdk_pixbuf_save(blurred, dst_path, "png", &save_error, NULL)) {
+								aetheridle_log(LOG_INFO, "Blurred wallpaper saved successfully to %s", dst_path);
+							} else {
+								aetheridle_log(LOG_ERROR, "Failed to save blurred wallpaper: %s", save_error ? save_error->message : "unknown error");
+								if (save_error) g_error_free(save_error);
+							}
+							free(dst_path);
+						}
+						guchar *pixels = gdk_pixbuf_get_pixels(blurred);
+						free(pixels);
+						g_object_unref(blurred);
+					}
+					g_object_unref(scaled);
+				}
+			}
+		}
+	}
+	fclose(f);
+	free(wp_cfg_path);
+}
+
+
 static void setup_config_watch(void) {
 	if (!state.config_path) {
 		return;
@@ -1240,6 +1587,73 @@ static void setup_config_watch(void) {
 		WL_EVENT_READABLE, inotify_event_handler, NULL);
 }
 
+static int wallpaper_inotify_handler(int fd, uint32_t mask, void *data) {
+	char buffer[sizeof(struct inotify_event) + NAME_MAX + 1] __attribute__((aligned(__alignof__(struct inotify_event))));
+	ssize_t len;
+
+	while ((len = read(fd, buffer, sizeof(buffer))) > 0) {
+		char *ptr = buffer;
+		while (ptr < buffer + len) {
+			struct inotify_event *event = (struct inotify_event *)ptr;
+			if (event->len > 0) {
+				char *wp_cfg_path = get_vaxp_wallpaper_path();
+				if (wp_cfg_path) {
+					char *base_name = strdup(wp_cfg_path);
+					char *base = basename(base_name);
+					if (strcmp(event->name, base) == 0) {
+						aetheridle_log(LOG_INFO, "Wallpaper configuration changed, processing blurred wallpaper...");
+						process_blurred_wallpaper();
+					}
+					free(base_name);
+					free(wp_cfg_path);
+				}
+			}
+			ptr += sizeof(struct inotify_event) + event->len;
+		}
+	}
+	if (len < 0 && errno != EAGAIN) {
+		aetheridle_log(LOG_ERROR, "Failed to read wallpaper inotify events: %s", strerror(errno));
+	}
+	return 0;
+}
+
+static void setup_wallpaper_watch(void) {
+	char *wp_cfg_path = get_vaxp_wallpaper_path();
+	if (!wp_cfg_path) {
+		return;
+	}
+
+	wallpaper_watch_fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
+	if (wallpaper_watch_fd < 0) {
+		aetheridle_log(LOG_ERROR, "Failed to initialize wallpaper inotify: %s", strerror(errno));
+		free(wp_cfg_path);
+		return;
+	}
+
+	char *dir_path = strdup(wp_cfg_path);
+	if (!dir_path) {
+		close(wallpaper_watch_fd);
+		wallpaper_watch_fd = -1;
+		free(wp_cfg_path);
+		return;
+	}
+	char *dir = dirname(dir_path);
+
+	int wd = inotify_add_watch(wallpaper_watch_fd, dir, IN_CLOSE_WRITE | IN_MOVED_TO);
+	free(dir_path);
+	free(wp_cfg_path);
+
+	if (wd < 0) {
+		aetheridle_log(LOG_ERROR, "Failed to watch wallpaper directory: %s", strerror(errno));
+		close(wallpaper_watch_fd);
+		wallpaper_watch_fd = -1;
+		return;
+	}
+
+	wallpaper_watch_source = wl_event_loop_add_fd(state.event_loop, wallpaper_watch_fd,
+		WL_EVENT_READABLE, wallpaper_inotify_handler, NULL);
+}
+
 
 int main(int argc, char *argv[]) {
 	aetheridle_init();
@@ -1267,6 +1681,8 @@ int main(int argc, char *argv[]) {
 
 	state.event_loop = wl_event_loop_create();
 	setup_config_watch();
+	process_blurred_wallpaper();
+	setup_wallpaper_watch();
 
 	wl_event_loop_add_signal(state.event_loop, SIGINT, handle_signal, NULL);
 	wl_event_loop_add_signal(state.event_loop, SIGTERM, handle_signal, NULL);

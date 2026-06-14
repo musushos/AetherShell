@@ -24,6 +24,7 @@ wayland_client = dependency('wayland-client')
 wayland_protos = dependency('wayland-protocols', version: '>=1.40')
 wayland_server = dependency('wayland-server')
 logind = dependency('lib' + get_option('logind-provider'), required: get_option('logind'))
+gdk_pixbuf = dependency('gdk-pixbuf-2.0')
 scdoc = find_program('scdoc', required: get_option('man-pages'))
 wayland_scanner = dependency('wayland-scanner', native: true, version: '>=1.14.91')
 wayland_scanner_prog = find_program(wayland_scanner.get_variable('wayland_scanner'), native: true)
@@ -73,6 +74,7 @@ executable(
 		wayland_client,
 		wayland_server,
 		logind,
+		gdk_pixbuf,
 	],
 	install: true,
 )
