@@ -1239,7 +1239,7 @@ int main(int argc, char **argv) {
 		.show_clock = true,
 		.user_name = NULL,
 		.avatar_path = NULL,
-		.blur_radius = 20,
+		.blur_radius = 0,
 	};
 	wl_list_init(&state.images);
 	set_default_colors(&state.args.colors);
@@ -1324,31 +1324,17 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	// Auto-load wallpaper from ~/.config/vaxp/wallpaper if no -i given
+	// Auto-load wallpaper from ~/.config/vaxp/background if no -i given
 	if (wl_list_empty(&state.images)) {
 		const char *home = getenv("HOME");
 		if (home) {
-			char wp_cfg[4096];
-			snprintf(wp_cfg, sizeof(wp_cfg),
-				"%s/.config/vaxp/wallpaper", home);
-			FILE *f = fopen(wp_cfg, "r");
-			if (f) {
-				char wp_path[4096];
-				if (fgets(wp_path, sizeof(wp_path), f)) {
-					/* Strip trailing newline/spaces */
-					size_t len = strlen(wp_path);
-					while (len > 0 && (wp_path[len-1] == '\n' ||
-							wp_path[len-1] == '\r' ||
-							wp_path[len-1] == ' ')) {
-						wp_path[--len] = '\0';
-					}
-					if (len > 0) {
-						aetherlock_log(LOG_DEBUG,
-							"Auto-loading wallpaper: %s", wp_path);
-						load_image(wp_path, &state);
-					}
-				}
-				fclose(f);
+			char wp_path[4096];
+			snprintf(wp_path, sizeof(wp_path),
+				"%s/.config/vaxp/background", home);
+			if (access(wp_path, R_OK) == 0) {
+				aetherlock_log(LOG_DEBUG,
+					"Auto-loading pre-blurred wallpaper: %s", wp_path);
+				load_image(wp_path, &state);
 			}
 		}
 	}

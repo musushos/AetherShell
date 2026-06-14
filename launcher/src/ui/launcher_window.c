@@ -7,6 +7,7 @@
 #include <gdk/gdk.h>
 #include <gtk-layer-shell.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* -------------------------------------------------------------------------
  * Private struct
@@ -25,6 +26,7 @@ struct _VenomLauncherWindow {
     cairo_surface_t *wallpaper_surface;
     int           cached_width;
     int           cached_height;
+    time_t        wallpaper_mtime;
 };
 
 G_DEFINE_TYPE (VenomLauncherWindow, venom_launcher_window,
@@ -84,24 +86,22 @@ static void
 load_wallpaper (VenomLauncherWindow *self)
 {
     const char *config_dir = g_get_user_config_dir ();
-    char *wallpaper_file_path = g_build_filename (config_dir, "vaxp", "wallpaper", NULL);
+    char *wallpaper_file_path = g_build_filename (config_dir, "vaxp", "background", NULL);
 
+    struct stat st;
     gboolean file_changed = FALSE;
-    char *new_path = NULL;
-    GError *error = NULL;
 
-    if (g_file_get_contents (wallpaper_file_path, &new_path, NULL, &error)) {
-        new_path = g_strstrip (new_path);
-        if (!self->wallpaper_path || strcmp (self->wallpaper_path, new_path) != 0) {
+    if (stat (wallpaper_file_path, &st) == 0) {
+        if (self->wallpaper_mtime != st.st_mtime) {
             file_changed = TRUE;
+            self->wallpaper_mtime = st.st_mtime;
         }
     } else {
         if (self->wallpaper_path != NULL) {
             file_changed = TRUE;
+            self->wallpaper_mtime = 0;
         }
-        if (error) g_error_free (error);
     }
-    g_free (wallpaper_file_path);
 
     if (file_changed) {
         if (self->wallpaper_surface) {
@@ -117,20 +117,16 @@ load_wallpaper (VenomLauncherWindow *self)
             self->wallpaper_path = NULL;
         }
 
-        if (new_path && strlen (new_path) > 0) {
-            GError *pixbuf_error = NULL;
-            self->wallpaper_pixbuf = gdk_pixbuf_new_from_file (new_path, &pixbuf_error);
-            if (!self->wallpaper_pixbuf) {
-                if (pixbuf_error) g_error_free (pixbuf_error);
-            } else {
-                self->wallpaper_path = g_strdup (new_path);
-            }
+        GError *pixbuf_error = NULL;
+        self->wallpaper_pixbuf = gdk_pixbuf_new_from_file (wallpaper_file_path, &pixbuf_error);
+        if (self->wallpaper_pixbuf) {
+            self->wallpaper_path = g_strdup (wallpaper_file_path);
+        } else {
+            if (pixbuf_error) g_error_free (pixbuf_error);
         }
     }
 
-    if (new_path) {
-        g_free (new_path);
-    }
+    g_free (wallpaper_file_path);
 }
 
 static gboolean
