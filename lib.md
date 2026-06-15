@@ -1,4 +1,4 @@
-sudo apt install libgtk-layer-shell0 slurp grim
+sudo apt install libgtk-layer-shell0 slurp grim libmpv2
 
 
 للبناء 
