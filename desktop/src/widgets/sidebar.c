@@ -16,7 +16,7 @@
  *       -I/path/to/desktop/include -lm
  *
  * Install:
- *   cp sidebar.so ~/.config/vaxp/widgets/
+ *   cp sidebar.so ~/.config/vaxp/desktop/widgets/
  *
  */
 #include <gtk/gtk.h>

@@ -86,7 +86,7 @@ static void
 load_wallpaper (VenomLauncherWindow *self)
 {
     const char *config_dir = g_get_user_config_dir ();
-    char *wallpaper_file_path = g_build_filename (config_dir, "vaxp", "background", NULL);
+    char *wallpaper_file_path = g_build_filename (config_dir, "vaxp", "desktop", "background", NULL);
 
     struct stat st;
     gboolean file_changed = FALSE;

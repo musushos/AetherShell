@@ -7,7 +7,7 @@
 static GtkWidget *main_window = NULL;
 
 static char *get_vaxp_config_path(const char *filename) {
-    return g_build_filename(g_get_user_config_dir(), "vaxp", filename, NULL);
+    return g_build_filename(g_get_user_config_dir(), "vaxp", "desktop", filename, NULL);
 }
 
 static char *get_vaxp_cache_path(const char *filename) {
@@ -15,7 +15,7 @@ static char *get_vaxp_cache_path(const char *filename) {
 }
 
 static void ensure_config_dir(void) {
-    char *dir = g_build_filename(g_get_user_config_dir(), "vaxp", NULL);
+    char *dir = g_build_filename(g_get_user_config_dir(), "vaxp", "desktop", NULL);
     g_mkdir_with_parents(dir, 0755);
     g_free(dir);
 }

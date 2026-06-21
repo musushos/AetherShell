@@ -1447,13 +1447,13 @@ static char *get_vaxp_wallpaper_path(void) {
 	char *config_home = getenv("XDG_CONFIG_HOME");
 	char path[4096];
 	if (config_home && config_home[0] != '\0') {
-		snprintf(path, sizeof(path), "%s/vaxp/wallpaper", config_home);
+		snprintf(path, sizeof(path), "%s/vaxp/desktop/wallpaper", config_home);
 	} else {
 		char *home = getenv("HOME");
 		if (!home) {
 			return NULL;
 		}
-		snprintf(path, sizeof(path), "%s/.config/vaxp/wallpaper", home);
+		snprintf(path, sizeof(path), "%s/.config/vaxp/desktop/wallpaper", home);
 	}
 	return strdup(path);
 }
@@ -1462,13 +1462,13 @@ static char *get_vaxp_blurred_wallpaper_path(void) {
 	char *config_home = getenv("XDG_CONFIG_HOME");
 	char path[4096];
 	if (config_home && config_home[0] != '\0') {
-		snprintf(path, sizeof(path), "%s/vaxp/background", config_home);
+		snprintf(path, sizeof(path), "%s/vaxp/desktop/background", config_home);
 	} else {
 		char *home = getenv("HOME");
 		if (!home) {
 			return NULL;
 		}
-		snprintf(path, sizeof(path), "%s/.config/vaxp/background", home);
+		snprintf(path, sizeof(path), "%s/.config/vaxp/desktop/background", home);
 	}
 	return strdup(path);
 }

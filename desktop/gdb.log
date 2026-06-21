@@ -21900,7 +21900,7 @@ Thread 1 "desktop" received signal SIGSEGV, Segmentation fault.
 0x00007ffff7e5850d in g_type_check_instance () from /lib/x86_64-linux-gnu/libgobject-2.0.so.0
 #0  0x00007ffff7e5850d in g_type_check_instance () at /lib/x86_64-linux-gnu/libgobject-2.0.so.0
 #1  0x00007ffff7e49e6c in g_signal_handlers_block_matched () at /lib/x86_64-linux-gnu/libgobject-2.0.so.0
-#2  0x00007ffff5f859e7 in poll_mpris () at /home/x/.config/vaxp/widgets/mpris-player.so
+#2  0x00007ffff5f859e7 in poll_mpris () at /home/x/.config/vaxp/desktop/widgets/mpris-player.so
 #3  0x00007ffff72014f2 in ??? () at /lib/x86_64-linux-gnu/libglib-2.0.so.0
 #4  0x00007ffff720045e in ??? () at /lib/x86_64-linux-gnu/libglib-2.0.so.0
 #5  0x00007ffff725f977 in ??? () at /lib/x86_64-linux-gnu/libglib-2.0.so.0

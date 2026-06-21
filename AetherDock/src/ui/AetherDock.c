@@ -1505,7 +1505,7 @@ void on_button_clicked(GtkWidget *widget, gpointer data) {
 
 /* Load pinned apps from config file */
 void load_pinned_apps() {
-    gchar *config_dir = g_build_filename(g_get_user_config_dir(), "simple-panel", NULL);
+    gchar *config_dir = g_build_filename(g_get_user_config_dir(), "vaxp/dock", NULL);
     gchar *config_file = g_build_filename(config_dir, "pinned-apps", NULL);
     
     g_mkdir_with_parents(config_dir, 0755);
@@ -1536,7 +1536,7 @@ void load_pinned_apps() {
 
 /* Save pinned apps to config file */
 void save_pinned_apps() {
-    gchar *config_dir = g_build_filename(g_get_user_config_dir(), "simple-panel", NULL);
+    gchar *config_dir = g_build_filename(g_get_user_config_dir(), "vaxp/dock", NULL);
     gchar *config_file = g_build_filename(config_dir, "pinned-apps", NULL);
     
     g_mkdir_with_parents(config_dir, 0755);

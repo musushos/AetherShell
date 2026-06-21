@@ -651,7 +651,7 @@ static void show_edit_widgets_dialog(GtkWidget *parent_widget) {
     }
 
     if (widget_count == 0) {
-        GtkWidget *empty = gtk_label_new("No widgets found in ~/.config/vaxp/widgets/");
+        GtkWidget *empty = gtk_label_new("No widgets found in ~/.config/vaxp/desktop/widgets/");
         gtk_widget_set_sensitive(empty, FALSE);
         gtk_box_pack_start(GTK_BOX(content), empty, TRUE, TRUE, 20);
     }

@@ -26,7 +26,7 @@
  *       -lm -I/path/to/desktop/include
  *
  * Install:
- *   cp mpris-player.so ~/.config/vaxp/widgets/
+ *   cp mpris-player.so ~/.config/vaxp/desktop/widgets/
  */
 
 #include <gtk/gtk.h>

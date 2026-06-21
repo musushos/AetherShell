@@ -115,9 +115,9 @@ make widgets
 لكي يتعرف `desktop` على الودجت الخاص بك ويعرضه، يجب نقل ملف `my-clock.so` النهائي إلى مجلد إعدادات التطبيق الخاص بالمستخدم:
 
 ```text
-~/.config/vaxp/widgets/
+~/.config/vaxp/desktop/widgets/
 ```
-أي: `/home/YOUR_USERNAME/.config/vaxp/widgets/`
+أي: `/home/YOUR_USERNAME/.config/vaxp/desktop/widgets/`
 
 عندما يقوم المستخدم بتبديل سطح المكتب إلى **"وضع الـ Widgets" (Widgets Only)** سيقرأ التطبيق هذا المسار، ويستخرج واجهتك، ويعرضها مباشرة!
 
@@ -192,7 +192,7 @@ vaxpWidgetAPI* vaxp_widget_init(void) {
 - مصدر البيانات: `wttr.in` (يحتاج إنترنت + وجود `curl` على النظام).
 - التحديث: تلقائياً كل 10 دقائق، ويمكن التحديث فوراً بـ **Right Click** على الودجت.
 - الإعدادات: أنشئ ملف:
-  - `~/.config/vaxp/weather.conf`
+  - `~/.config/vaxp/desktop/weather.conf`
   - واكتب داخله:
     - `location=Baghdad` (غيّرها لمدينتك)
 

@@ -62,7 +62,7 @@ $(SETBG_TARGET): $(SETBG_SRC)
 # ---- Widgets Compilation ----
 WIDGETS_DIR_SRC = src/widgets
 WIDGET__OUT_DIR = obj/widgets
-CONFIG_WIDGET_DIR = $(HOME)/.config/vaxp/widgets
+CONFIG_WIDGET_DIR = $(HOME)/.config/vaxp/desktop/widgets
 
 widgets: $(WIDGET__OUT_DIR)
 	@mkdir -p $(CONFIG_WIDGET_DIR)
