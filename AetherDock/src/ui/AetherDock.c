@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
         dock_executable_path = g_strdup(argv[0]);
     }
 
-    current_dock_position = get_dock_position();
+    load_dock_config();
     
     /* Set up file monitor for config */
     GFile *config_file_obj;

@@ -31,17 +31,17 @@ static gboolean on_launch_ring_draw(GtkWidget *widget, cairo_t *cr, gpointer dat
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
 
     cairo_arc(cr, cx, cy, radius, 0, 2 * G_PI);
-    cairo_set_source_rgba(cr, 0.0, 0.99, 0.82, 0.13);
+    cairo_set_source_rgba(cr, current_launch_ring_color.red, current_launch_ring_color.green, current_launch_ring_color.blue, 0.13);
     cairo_set_line_width(cr, 1.4);
     cairo_stroke(cr);
 
     cairo_arc(cr, cx, cy, radius, start, end);
-    cairo_set_source_rgba(cr, 0.0, 0.99, 0.82, 0.95);
+    cairo_set_source_rgba(cr, current_launch_ring_color.red, current_launch_ring_color.green, current_launch_ring_color.blue, 0.95);
     cairo_set_line_width(cr, 2.2);
     cairo_stroke(cr);
 
     cairo_arc(cr, cx, cy, radius, start, end);
-    cairo_set_source_rgba(cr, 0.0, 0.99, 0.82, 0.28);
+    cairo_set_source_rgba(cr, current_launch_ring_color.red, current_launch_ring_color.green, current_launch_ring_color.blue, 0.28);
     cairo_set_line_width(cr, 5.4);
     cairo_stroke(cr);
 

@@ -2,32 +2,116 @@
 #include "ui/x11_integration.h"
 #include "ui/dock_ui.h"
 
-DockPosition get_dock_position(void) {
+static GtkCssProvider *dynamic_css_provider = NULL;
+
+static void apply_dock_colors(void) {
+    if (!dynamic_css_provider) {
+        dynamic_css_provider = gtk_css_provider_new();
+        GdkDisplay *display = gdk_display_get_default();
+        GdkScreen *screen = gdk_display_get_default_screen(display);
+        gtk_style_context_add_provider_for_screen(screen,
+                                                  GTK_STYLE_PROVIDER(dynamic_css_provider),
+                                                  GTK_STYLE_PROVIDER_PRIORITY_USER);
+    }
+
+    gchar *bg_color = current_dock_bg_color ? current_dock_bg_color : "rgba(0, 0, 0, 0.300)";
+    gchar *ctx_color = current_context_menu_bg_color ? current_context_menu_bg_color : "rgba(8, 10, 14, 0.78)";
+    gchar *ind_color = current_indicator_color ? current_indicator_color : "#00fcd2";
+
+    gchar *css = g_strdup_printf(
+        "#dock-box { background-color: %s; }\n"
+        "menu#dock-context-menu, menu.dock-context-menu, #context-menu-box { background-color: %s; }\n"
+        ".running-app #indicator-dot { background-color: %s; box-shadow: 0 0 4px %s; }\n",
+        bg_color, ctx_color, ind_color, ind_color
+    );
+
+    GError *error = NULL;
+    gtk_css_provider_load_from_data(dynamic_css_provider, css, -1, &error);
+    if (error) {
+        g_warning("Failed to apply dynamic CSS: %s", error->message);
+        g_error_free(error);
+    }
+    g_free(css);
+
+    /* Also trigger a redraw to ensure launch ring updates */
+    if (box) {
+        gtk_widget_queue_draw(box);
+    }
+}
+
+void load_dock_config(void) {
     gchar *config_dir = g_build_filename(g_get_user_config_dir(), "vaxp/dock", NULL);
     gchar *config_file = g_build_filename(config_dir, "dock_state.vaxp", NULL);
-    gchar *contents = NULL;
-    DockPosition pos = DOCK_POSITION_BOTTOM;
 
-    if (!g_file_test(config_file, G_FILE_TEST_EXISTS)) {
-        g_mkdir_with_parents(config_dir, 0755);
-        g_file_set_contents(config_file, "bottom", -1, NULL);
-    }
+    g_mkdir_with_parents(config_dir, 0755);
 
-    if (g_file_get_contents(config_file, &contents, NULL, NULL)) {
-        g_strstrip(contents);
-        if (g_ascii_strcasecmp(contents, "top") == 0) {
-            pos = DOCK_POSITION_TOP;
-        } else if (g_ascii_strcasecmp(contents, "left") == 0) {
-            pos = DOCK_POSITION_LEFT;
-        } else if (g_ascii_strcasecmp(contents, "right") == 0) {
-            pos = DOCK_POSITION_RIGHT;
+    GKeyFile *key_file = g_key_file_new();
+    GError *error = NULL;
+    gboolean write_needed = FALSE;
+
+    if (!g_key_file_load_from_file(key_file, config_file, G_KEY_FILE_NONE, &error)) {
+        /* Check if it's the old format (just position) or empty */
+        gchar *contents = NULL;
+        if (g_file_get_contents(config_file, &contents, NULL, NULL)) {
+            g_strstrip(contents);
+            if (g_ascii_strcasecmp(contents, "top") == 0 ||
+                g_ascii_strcasecmp(contents, "bottom") == 0 ||
+                g_ascii_strcasecmp(contents, "left") == 0 ||
+                g_ascii_strcasecmp(contents, "right") == 0) {
+                g_key_file_set_string(key_file, "Dock", "Position", contents);
+            } else {
+                g_key_file_set_string(key_file, "Dock", "Position", "bottom");
+            }
+            g_free(contents);
+        } else {
+            g_key_file_set_string(key_file, "Dock", "Position", "bottom");
         }
-        g_free(contents);
+        
+        g_key_file_set_string(key_file, "Dock", "BackgroundColor", "rgba(0, 0, 0, 0.300)");
+        g_key_file_set_string(key_file, "Dock", "ContextMenuColor", "rgba(8, 10, 14, 0.78)");
+        g_key_file_set_string(key_file, "Dock", "IndicatorColor", "#00fcd2");
+        g_key_file_set_string(key_file, "Dock", "LaunchRingColor", "#00fcd2");
+        write_needed = TRUE;
+        g_clear_error(&error);
     }
 
+    gchar *pos_str = g_key_file_get_string(key_file, "Dock", "Position", NULL);
+    if (pos_str) {
+        if (g_ascii_strcasecmp(pos_str, "top") == 0) current_dock_position = DOCK_POSITION_TOP;
+        else if (g_ascii_strcasecmp(pos_str, "left") == 0) current_dock_position = DOCK_POSITION_LEFT;
+        else if (g_ascii_strcasecmp(pos_str, "right") == 0) current_dock_position = DOCK_POSITION_RIGHT;
+        else current_dock_position = DOCK_POSITION_BOTTOM;
+        g_free(pos_str);
+    }
+
+    g_free(current_dock_bg_color);
+    current_dock_bg_color = g_key_file_get_string(key_file, "Dock", "BackgroundColor", NULL);
+
+    g_free(current_context_menu_bg_color);
+    current_context_menu_bg_color = g_key_file_get_string(key_file, "Dock", "ContextMenuColor", NULL);
+
+    g_free(current_indicator_color);
+    current_indicator_color = g_key_file_get_string(key_file, "Dock", "IndicatorColor", NULL);
+
+    gchar *ring_color_str = g_key_file_get_string(key_file, "Dock", "LaunchRingColor", NULL);
+    if (ring_color_str) {
+        gdk_rgba_parse(&current_launch_ring_color, ring_color_str);
+        g_free(ring_color_str);
+    }
+
+    if (write_needed) {
+        gchar *data = g_key_file_to_data(key_file, NULL, NULL);
+        if (data) {
+            g_file_set_contents(config_file, data, -1, NULL);
+            g_free(data);
+        }
+    }
+
+    g_key_file_free(key_file);
     g_free(config_file);
     g_free(config_dir);
-    return pos;
+
+    apply_dock_colors();
 }
 
 void apply_dock_position(void) {
@@ -142,9 +226,9 @@ void on_dock_config_changed(GFileMonitor *monitor, GFile *file, GFile *other_fil
     (void)user_data;
 
     if (event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT || event_type == G_FILE_MONITOR_EVENT_CREATED) {
-        DockPosition new_pos = get_dock_position();
-        if (new_pos != current_dock_position) {
-            current_dock_position = new_pos;
+        DockPosition old_pos = current_dock_position;
+        load_dock_config();
+        if (current_dock_position != old_pos) {
             apply_dock_position();
         }
     }

@@ -43,6 +43,11 @@ typedef struct {
 
 /* Global state variables */
 extern DockPosition current_dock_position;
+extern gchar *current_dock_bg_color;
+extern gchar *current_context_menu_bg_color;
+extern gchar *current_indicator_color;
+extern GdkRGBA current_launch_ring_color;
+
 extern gboolean is_wayland_session;
 extern struct wl_display *wl_display_conn;
 extern struct wl_seat *wl_seat_obj;

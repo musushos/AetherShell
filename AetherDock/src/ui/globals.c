@@ -1,7 +1,12 @@
 #include "ui/globals.h"
 
-/* Global state variables definitions */
+/* Global state variables */
 DockPosition current_dock_position = DOCK_POSITION_BOTTOM;
+gchar *current_dock_bg_color = NULL;
+gchar *current_context_menu_bg_color = NULL;
+gchar *current_indicator_color = NULL;
+GdkRGBA current_launch_ring_color = {0.0, 0.99, 0.82, 1.0}; /* Default #00fcd2 */
+
 gboolean is_wayland_session = FALSE;
 struct wl_display *wl_display_conn = NULL;
 struct wl_seat *wl_seat_obj = NULL;
