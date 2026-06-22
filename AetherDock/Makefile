@@ -23,7 +23,14 @@ UI_HELPER_OBJS = $(BUILD_DIR)/launcher.o \
                  $(BUILD_DIR)/drives.o \
                  $(BUILD_DIR)/utils.o
 
-PANEL_OBJS = $(BUILD_DIR)/AetherDock.o
+PANEL_OBJS = $(BUILD_DIR)/AetherDock.o \
+             $(BUILD_DIR)/globals.o \
+             $(BUILD_DIR)/dock_config.o \
+             $(BUILD_DIR)/app_tracker.o \
+             $(BUILD_DIR)/wayland_integration.o \
+             $(BUILD_DIR)/x11_integration.o \
+             $(BUILD_DIR)/context_menu.o \
+             $(BUILD_DIR)/dock_ui.o
 PROTO_OBJS = $(BUILD_DIR)/wlr-foreign-toplevel-management-unstable-v1-client-protocol.o
 
 all: $(BUILD_DIR) $(PROTO_DIR) AetherDock
