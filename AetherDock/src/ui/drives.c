@@ -10,6 +10,34 @@ static GVolumeMonitor *volume_monitor = NULL;
 /* Forward declaration */
 static void refresh_drives(void);
 
+static void on_volume_mounted_cb(GObject *source_object, GAsyncResult *res, gpointer user_data) {
+    (void)user_data;
+    GVolume *volume = G_VOLUME(source_object);
+    GError *error = NULL;
+    if (!g_volume_mount_finish(volume, res, &error)) {
+        if (error->domain != G_IO_ERROR || error->code != G_IO_ERROR_FAILED_HANDLED) {
+            g_printerr("Failed to automount volume: %s\n", error->message);
+        }
+        g_error_free(error);
+    }
+}
+
+static void try_automount_volume(GVolume *volume) {
+    if (!g_volume_can_mount(volume)) return;
+
+    /* Only automount removable drives */
+    GDrive *drive = g_volume_get_drive(volume);
+    if (drive) {
+        gboolean removable = g_drive_is_removable(drive);
+        g_object_unref(drive);
+        if (removable) {
+            GMountOperation *mount_op = gtk_mount_operation_new(NULL);
+            g_volume_mount(volume, G_MOUNT_MOUNT_NONE, mount_op, NULL, on_volume_mounted_cb, NULL);
+            g_object_unref(mount_op);
+        }
+    }
+}
+
 /* Open the mount point in the file manager */
 static void on_drive_clicked(GtkWidget *widget, gpointer data) {
     (void)widget;
@@ -141,6 +169,11 @@ static void on_mount_removed(GVolumeMonitor *monitor, GMount *mount, gpointer da
     refresh_drives();
 }
 
+static void on_volume_added(GVolumeMonitor *monitor, GVolume *volume, gpointer data) {
+    (void)monitor; (void)data;
+    try_automount_volume(volume);
+}
+
 void create_drives_area(GtkWidget *box) {
     /* Get the singleton volume monitor */
     volume_monitor = g_volume_monitor_get();
@@ -153,10 +186,25 @@ void create_drives_area(GtkWidget *box) {
     gtk_box_pack_end(GTK_BOX(box), drives_box, FALSE, FALSE, 0);
     gtk_widget_show(drives_box);
 
-    /* Populate initially */
-    refresh_drives();
-
-    /* Watch for future mount changes */
+    /* Watch for future mount changes and volume additions */
     g_signal_connect(volume_monitor, "mount-added",   G_CALLBACK(on_mount_added),   NULL);
     g_signal_connect(volume_monitor, "mount-removed", G_CALLBACK(on_mount_removed), NULL);
+    g_signal_connect(volume_monitor, "volume-added",  G_CALLBACK(on_volume_added),  NULL);
+
+    /* Try to automount any existing unmounted removable volumes on startup */
+    GList *volumes = g_volume_monitor_get_volumes(volume_monitor);
+    for (GList *l = volumes; l != NULL; l = l->next) {
+        GVolume *volume = G_VOLUME(l->data);
+        GMount *mount = g_volume_get_mount(volume);
+        if (!mount) {
+            try_automount_volume(volume);
+        } else {
+            g_object_unref(mount);
+        }
+        g_object_unref(volume);
+    }
+    g_list_free(volumes);
+
+    /* Populate initially */
+    refresh_drives();
 }
