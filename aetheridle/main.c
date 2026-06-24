@@ -1447,13 +1447,13 @@ static char *get_vaxp_wallpaper_path(void) {
 	char *config_home = getenv("XDG_CONFIG_HOME");
 	char path[4096];
 	if (config_home && config_home[0] != '\0') {
-		snprintf(path, sizeof(path), "%s/vaxp/desktop/wallpaper", config_home);
+		snprintf(path, sizeof(path), "%s/vaxp/desktop/desktop.vaxp", config_home);
 	} else {
 		char *home = getenv("HOME");
 		if (!home) {
 			return NULL;
 		}
-		snprintf(path, sizeof(path), "%s/.config/vaxp/desktop/wallpaper", home);
+		snprintf(path, sizeof(path), "%s/.config/vaxp/desktop/desktop.vaxp", home);
 	}
 	return strdup(path);
 }
@@ -1484,8 +1484,17 @@ static void process_blurred_wallpaper(void) {
 		return;
 	}
 
-	char wp_path[4096];
-	if (fgets(wp_path, sizeof(wp_path), f)) {
+	char wp_path[4096] = {0};
+	char line[4096];
+	while (fgets(line, sizeof(line), f)) {
+		if (strncmp(line, "Wallpaper=", 10) == 0) {
+			strncpy(wp_path, line + 10, sizeof(wp_path) - 1);
+			wp_path[sizeof(wp_path) - 1] = '\0';
+			break;
+		}
+	}
+
+	if (wp_path[0] != '\0') {
 		size_t len = strlen(wp_path);
 		while (len > 0 && (wp_path[len-1] == '\n' || wp_path[len-1] == '\r' || wp_path[len-1] == ' ')) {
 			wp_path[--len] = '\0';
