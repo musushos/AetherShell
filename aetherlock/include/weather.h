@@ -7,6 +7,7 @@ struct weather_data {
     char location[64];
     char condition[64];
     char temperature[64];
+    char *custom_location;
 };
 
 struct aetherlock_state;

@@ -111,6 +111,7 @@ sources = [
 	'src/main.c',
 	'src/password.c',
 	'src/password-buffer.c',
+	'src/vaxp_config.c',
 	'src/pool-buffer.c',
 	'src/render.c',
 	'src/seat.c',

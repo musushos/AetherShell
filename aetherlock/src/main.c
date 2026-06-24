@@ -33,6 +33,7 @@
 #include "aetherlock.h"
 #include "ext-session-lock-v1-client-protocol.h"
 #include "sysstats.h"
+#include "vaxp_config.h"
 
 /* ── Gaussian blur (3-pass box blur approximation) ───────────────────── */
 static void apply_blur(cairo_surface_t *surface, int radius) {
@@ -1652,6 +1653,8 @@ int main(int argc, char **argv) {
 	loop_add_timer(state.eventloop, 1500, sysstats_timer_cb, &state);
 
 	// Setup Weather
+	state.weather.custom_location = NULL;
+	config_load(&state);
 	weather_init(&state);
 
 	// Setup Notifications

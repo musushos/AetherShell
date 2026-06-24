@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#include "vaxp_config.h"
 #include "background-image.h"
 #include "cairo.h"
 #include "loop.h"
@@ -141,6 +143,8 @@ struct aetherlock_state {
 	char *latest_notif_body;
 	cairo_surface_t *latest_notif_icon;
 	gboolean notifications_dnd;
+	
+	struct vaxp_colors vaxp_colors;
 };
 
 struct aetherlock_surface {

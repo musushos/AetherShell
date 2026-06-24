@@ -38,59 +38,10 @@ static void on_weather_fetch_done(GObject *source_object, GAsyncResult *res, gpo
 void weather_fetch(struct aetherlock_state *state) {
     GError *error = NULL;
     
-    // Check for custom location config
-    gchar *config_dir = g_build_filename(g_get_user_config_dir(), "vaxp", "aetherlock", NULL);
-    gchar *config_file = g_build_filename(config_dir, "weather.vaxp", NULL);
-    
-    gchar *custom_location = NULL;
-    
-    if (g_file_test(config_file, G_FILE_TEST_EXISTS)) {
-        gchar *content = NULL;
-        if (g_file_get_contents(config_file, &content, NULL, NULL)) {
-            char **lines = g_strsplit(content, "\n", -1);
-            for (int i = 0; lines && lines[i]; i++) {
-                gchar *line = g_strstrip(lines[i]);
-                if (strlen(line) > 0 && line[0] != '#') {
-                    custom_location = g_strdup(line);
-                    break;
-                }
-            }
-            g_strfreev(lines);
-            g_free(content);
-        }
-    } else {
-        // Create the file with default content
-        g_mkdir_with_parents(config_dir, 0755);
-        
-        // Try to get default location from timezone
-        gchar *default_loc = NULL;
-        char tz_buf[512] = {0};
-        ssize_t len = readlink("/etc/localtime", tz_buf, sizeof(tz_buf)-1);
-        if (len != -1) {
-            char *city = strrchr(tz_buf, '/');
-            if (city) {
-                // Replace underscores with spaces (e.g. New_York -> New York)
-                default_loc = g_strdup(city + 1);
-                g_strdelimit(default_loc, "_", ' ');
-            }
-        }
-        
-        gchar *default_content;
-        if (default_loc) {
-            default_content = g_strdup_printf("# Enter your city here (e.g., Karbala)\n%s\n", default_loc);
-            custom_location = g_strdup(default_loc); // Use it immediately as well!
-            g_free(default_loc);
-        } else {
-            default_content = g_strdup("# Enter your city here (e.g., Karbala)\n# Leave empty for auto-detect based on IP.\n\n");
-        }
-        g_file_set_contents(config_file, default_content, -1, NULL);
-        g_free(default_content);
-    }
-    
     gchar *url;
-    if (custom_location && strlen(custom_location) > 0) {
+    if (state->weather.custom_location && strlen(state->weather.custom_location) > 0) {
         // g_uri_escape_string to handle spaces in city names
-        gchar *escaped_loc = g_uri_escape_string(custom_location, NULL, TRUE);
+        gchar *escaped_loc = g_uri_escape_string(state->weather.custom_location, NULL, TRUE);
         url = g_strdup_printf("wttr.in/%s?format=%%l\\n%%C\\n%%t", escaped_loc);
         g_free(escaped_loc);
     } else {
@@ -104,9 +55,6 @@ void weather_fetch(struct aetherlock_state *state) {
     );
     
     g_free(url);
-    g_free(custom_location);
-    g_free(config_file);
-    g_free(config_dir);
     
     if (error) {
         g_error_free(error);

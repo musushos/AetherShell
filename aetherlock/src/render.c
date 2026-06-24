@@ -8,6 +8,10 @@
 #include "cairo.h"
 #include "background-image.h"
 #include "aetherlock.h"
+
+static inline void set_color(cairo_t *cr, struct color_rgba c) {
+	cairo_set_source_rgba(cr, c.r, c.g, c.b, c.a);
+}
 #include "sysstats.h"
 #include "vaxp_logo.h"
 #include "log.h"
@@ -230,12 +234,12 @@ static void draw_progress_ring(cairo_t *cr, double cx, double cy, double r, doub
 
 /* ── New Layout Helpers ─────────────────────────────────────────────────── */
 
-static void draw_card_bg(cairo_t *cr, double x, double y, double w, double h) {
+static void draw_card_bg(cairo_t *cr, struct aetherlock_state *state, double x, double y, double w, double h) {
 	rounded_rect(cr, x, y, w, h, 16.0);
-	cairo_set_source_rgba(cr, 20.0/255.0, 28.0/255.0, 30.0/255.0, 0.55); // panel-bg
+	set_color(cr, state->vaxp_colors.panel_bg); // panel-bg
 	cairo_fill_preserve(cr);
-	cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.07); // panel-border
-	cairo_set_line_width(cr, 1.0);
+	set_color(cr, state->vaxp_colors.panel_border); // panel-border
+	cairo_set_line_width(cr, state->vaxp_colors.panel_border_width);
 	cairo_stroke(cr);
 }
 
@@ -246,6 +250,8 @@ static void hex_to_rgb(const char* hex, double *r, double *g, double *b) {
 	*g = ((num >> 8) & 0xFF) / 255.0;
 	*b = (num & 0xFF) / 255.0;
 }
+
+
 
 /* ── Main frame renderer ─────────────────────────────────────────────── */
 
@@ -296,7 +302,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	rounded_rect(cr, 0, 0, PW, PH, 22.0);
 	cairo_set_source_rgba(cr, 8.0/255.0, 14.0/255.0, 14.0/255.0, 0.45);
 	cairo_fill_preserve(cr);
-	cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.07);
+	set_color(cr, state->vaxp_colors.panel_border);
 	cairo_set_line_width(cr, 1.0);
 	cairo_stroke(cr);
 
@@ -306,18 +312,18 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	
 	// Weather Card
 	double w_card_h = 100.0;
-	draw_card_bg(cr, cx1, cy, COL_W, w_card_h);
+	draw_card_bg(cr, state, cx1, cy, COL_W, w_card_h);
 	
 	cairo_select_font_face(cr, state->args.font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 	cairo_set_font_size(cr, 20.0);
-	cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0); // teal
+	set_color(cr, state->vaxp_colors.accent); // teal
 	cairo_move_to(cr, cx1 + 20, cy + 35);
 	cairo_show_text(cr, state->weather_fetched ? state->weather.location : "Weather");
 	
 	// Weather icon placeholder (Cloud)
 	cairo_new_path(cr);
 	cairo_set_line_width(cr, 2.0);
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0); // text-dim
+	set_color(cr, state->vaxp_colors.text_dim); // text-dim
 	
 	cairo_arc(cr, cx1 + 35, cy + 70, 8, M_PI/2, M_PI*1.5);
 	cairo_arc(cr, cx1 + 45, cy + 62, 12, M_PI, 2*M_PI);
@@ -327,13 +333,13 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_stroke(cr);
 	
 	cairo_set_font_size(cr, 18.0);
-	cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0); // text-bright
+	set_color(cr, state->vaxp_colors.text_bright); // text-bright
 	cairo_move_to(cr, cx1 + 80, cy + 60);
 	cairo_show_text(cr, state->weather.condition);
 	
 	cairo_select_font_face(cr, state->args.font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(cr, 13.0);
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	cairo_move_to(cr, cx1 + 80, cy + 80);
 	cairo_show_text(cr, state->weather.temperature);
 	
@@ -341,22 +347,22 @@ static bool render_frame(struct aetherlock_surface *surface) {
 
 	// Fetch Card
 	double f_card_h = 200.0;
-	draw_card_bg(cr, cx1, cy, COL_W, f_card_h);
+	draw_card_bg(cr, state, cx1, cy, COL_W, f_card_h);
 	// Prompt >
 	cairo_arc(cr, cx1 + 33, cy + 31, 13, 0, 2*M_PI);
-	cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 0.15);
+	set_color(cr, state->vaxp_colors.accent_dim);
 	cairo_fill(cr);
-	cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.accent);
 	cairo_set_font_size(cr, 13.0);
 	draw_text_centered(cr, ">", cx1 + 33, cy + 36);
 	
 	cairo_set_font_size(cr, 14.0);
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	cairo_move_to(cr, cx1 + 56, cy + 36);
 	cairo_show_text(cr, "VAXP.org");
 	
 	// VAXP Logo
-	cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0); // White-ish color
+	set_color(cr, state->vaxp_colors.text_bright); // White-ish color
 	draw_vaxp_logo(cr, cx1 + 55, cy + 92, 0.086);
 	
 	// Specs
@@ -377,7 +383,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		}
 	}
 
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	char spec_buf[128];
 	
 	snprintf(spec_buf, sizeof(spec_buf), "OS  : %s", sinfo.os_name);
@@ -412,10 +418,10 @@ static bool render_frame(struct aetherlock_surface *surface) {
 
 	// Now Playing Card
 	double np_card_h = 160.0;
-	draw_card_bg(cr, cx1, cy, COL_W, np_card_h);
+	draw_card_bg(cr, state, cx1, cy, COL_W, np_card_h);
 	// Content
 	cairo_set_font_size(cr, 13.0);
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	cairo_move_to(cr, cx1 + 20, cy + 30);
 	cairo_show_text(cr, "Now playing");
 	
@@ -447,9 +453,9 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	}
 
 	// Text rendering with Pango for font fallback
-	cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_bright);
 		const char *title = state->mpris_title ? state->mpris_title : "No Media";
-		cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_bright);
 		
 		PangoLayout *layout_title = pango_cairo_create_layout(cr);
 		pango_layout_set_text(layout_title, title, -1);
@@ -485,22 +491,22 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		}
 		g_object_unref(layout_title);
 	
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	draw_text_pango(cr, state->mpris_artist ? state->mpris_artist : "", state->args.font, 13.0, false, text_cx, cy + 85, max_text_w);
 
 	// Now Playing Card Controls
-	cairo_set_source_rgba(cr, 1, 1, 1, 0.07);
+	set_color(cr, state->vaxp_colors.panel_border);
 	cairo_arc(cr, cx1 + COL_W/2 - 50, cy + 120, 19, 0, 2*M_PI);
 	cairo_fill(cr);
 	cairo_arc(cr, cx1 + COL_W/2 + 50, cy + 120, 19, 0, 2*M_PI);
 	cairo_fill(cr);
 	
-	cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.accent);
 	cairo_arc(cr, cx1 + COL_W/2, cy + 120, 24, 0, 2*M_PI);
 	cairo_fill(cr);
 
 	// Draw Next and Prev Icons
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	draw_prev_icon(cr, cx1 + COL_W/2 - 50, cy + 120);
 	draw_next_icon(cr, cx1 + COL_W/2 + 50, cy + 120);
 
@@ -527,7 +533,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 
 		cairo_select_font_face(cr, state->args.font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 		cairo_set_font_size(cr, 64.0);
-		cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_bright);
 		
 		cairo_text_extents_t ext_time, ext_ampm;
 		cairo_text_extents(cr, time_str, &ext_time);
@@ -543,13 +549,13 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		cairo_show_text(cr, time_str);
 		
 		cairo_set_font_size(cr, 24.0);
-		cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0); // teal
+		set_color(cr, state->vaxp_colors.accent); // teal
 		cairo_move_to(cr, start_x + ext_time.width + 8.0 - ext_ampm.x_bearing, PAD + 80);
 		cairo_show_text(cr, ampm_str);
 		
 		cairo_select_font_face(cr, state->args.font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
 		cairo_set_font_size(cr, 18.0);
-		cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_dim);
 		draw_text_centered(cr, date_str, mid_x, PAD + 115);
 	}
 
@@ -578,7 +584,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		cairo_restore(cr);
 	} else {
 		cairo_arc(cr, mid_x, AV_CY, AV_R, 0, 2.0 * M_PI);
-		cairo_set_source_rgba(cr, 17.0/255.0, 17.0/255.0, 17.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.background);
 		cairo_fill(cr);
 		draw_person_icon(cr, mid_x, AV_CY, AV_R * 0.5);
 	}
@@ -598,7 +604,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	
 	// lock icon
 	cairo_set_line_width(cr, 1.5);
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	rounded_rect(cr, pw_x + 21, pw_y + PW_H/2 - 2, 14, 10, 2.0);
 	cairo_stroke(cr);
 	cairo_arc(cr, pw_x + 28, pw_y + PW_H/2 - 2, 4, M_PI, 2*M_PI);
@@ -607,7 +613,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	size_t pw_len = state->password.len;
 	cairo_set_font_size(cr, 15.0);
 	if (state->auth_state == AUTH_STATE_VALIDATING) {
-		cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.accent);
 		cairo_move_to(cr, pw_x + 50, pw_y + PW_H/2 + 5);
 		cairo_show_text(cr, "Verifying...");
 	} else if (state->auth_state == AUTH_STATE_INVALID) {
@@ -618,25 +624,25 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		int ndots = (int)MIN(pw_len, 20);
 		double dot_r = 4.0;
 		double spacing = 8.0;
-		cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_bright);
 		for (int i = 0; i < ndots; i++) {
 			cairo_arc(cr, pw_x + 50 + i * (dot_r * 2.0 + spacing), pw_y + PW_H / 2.0, dot_r, 0, 2.0 * M_PI);
 			cairo_fill(cr);
 		}
 	} else {
-		cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_dim);
 		cairo_move_to(cr, pw_x + 50, pw_y + PW_H/2 + 5);
 		cairo_show_text(cr, "Enter your password");
 	}
 	
 	// arrow button
 	cairo_arc(cr, pw_x + PW_W - 24, pw_y + PW_H/2, 15, 0, 2*M_PI);
-	cairo_set_source_rgba(cr, 1, 1, 1, 0.07);
+	set_color(cr, state->vaxp_colors.panel_border);
 	cairo_fill(cr);
 	cairo_move_to(cr, pw_x + PW_W - 27, pw_y + PW_H/2 - 4);
 	cairo_line_to(cr, pw_x + PW_W - 21, pw_y + PW_H/2);
 	cairo_line_to(cr, pw_x + PW_W - 27, pw_y + PW_H/2 + 4);
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	cairo_stroke(cr);
 
 	// ── Column 3: Right ────────────────────────────────────────────
@@ -658,7 +664,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	for(int i=0; i<4; i++) {
 		double sx = cx3 + (i%2) * (stat_size + 16.0);
 		double sy = cy + (i/2) * (stat_size + 16.0);
-		draw_card_bg(cr, sx, sy, stat_size, stat_size);
+		draw_card_bg(cr, state, sx, sy, stat_size, stat_size);
 		
 		// Progress Ring (centered differently for the right side)
 		draw_progress_ring(cr, sx + stat_size/2, sy + stat_size/2, stat_size/2 - 25, (stat_vals[i] / stat_max[i]) * 100.0, r_c[i], g_c[i], b_c[i]);
@@ -667,11 +673,11 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		char buf[32];
 		snprintf(buf, sizeof(buf), stat_fmt[i], stat_vals[i]);
 		cairo_set_font_size(cr, 24.0);
-		cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_bright);
 		draw_text_centered(cr, buf, sx + stat_size/2, sy + stat_size/2 - 10);
 		
 		cairo_set_font_size(cr, 12.0);
-		cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_dim);
 		draw_text_centered(cr, stat_names[i], sx + stat_size/2, sy + stat_size/2 + 15);
 	}
 	
@@ -679,9 +685,9 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	
 	// Notifications Card
 	double notif_h = PH - cy - PAD;
-	draw_card_bg(cr, cx3, cy, COL_W, notif_h);
+	draw_card_bg(cr, state, cx3, cy, COL_W, notif_h);
 	cairo_set_font_size(cr, 13.0);
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+	set_color(cr, state->vaxp_colors.text_dim);
 	cairo_move_to(cr, cx3 + 20, cy + 30);
 	const char *app_title = (state->latest_notif_app && !state->notifications_dnd) ? state->latest_notif_app : "Notifications";
 	PangoLayout *layout_app = pango_cairo_create_layout(cr);
@@ -709,10 +715,10 @@ static bool render_frame(struct aetherlock_surface *surface) {
 			text_cx = cx3 + 78 + max_text_w/2;
 		}
 
-		cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_bright);
 		draw_text_pango(cr, state->latest_notif_summary, state->args.font, 16.0, true, text_cx, cy + 60, max_text_w);
 		
-		cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
+		set_color(cr, state->vaxp_colors.text_dim);
 		draw_text_pango(cr, state->latest_notif_body ? state->latest_notif_body : "", state->args.font, 13.0, false, text_cx, cy + 85, max_text_w);
 	} else {
 		cairo_set_font_size(cr, 14.0);
