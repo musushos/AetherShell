@@ -8,8 +8,6 @@
 #include "background-image.h"
 #include "aetherlock.h"
 #include "log.h"
-#include "sysinfo.h"
-#include <sys/sysinfo.h>
 
 #define M_PI 3.14159265358979323846
 
@@ -134,48 +132,6 @@ static void draw_person_icon(cairo_t *cr, double cx, double cy, double r) {
 	cairo_fill(cr);
 }
 
-static void draw_play_icon(cairo_t *cr, double x, double y) {
-	cairo_new_path(cr);
-	cairo_move_to(cr, x - 4, y - 8);
-	cairo_line_to(cr, x + 8, y);
-	cairo_line_to(cr, x - 4, y + 8);
-	cairo_close_path(cr);
-	cairo_fill(cr);
-}
-
-static void draw_pause_icon(cairo_t *cr, double x, double y) {
-	cairo_new_path(cr);
-	cairo_rectangle(cr, x - 6, y - 8, 4, 16);
-	cairo_fill(cr);
-	cairo_new_path(cr);
-	cairo_rectangle(cr, x + 2, y - 8, 4, 16);
-	cairo_fill(cr);
-}
-
-static void draw_next_icon(cairo_t *cr, double x, double y) {
-	cairo_new_path(cr);
-	cairo_move_to(cr, x - 5, y - 6);
-	cairo_line_to(cr, x + 3, y);
-	cairo_line_to(cr, x - 5, y + 6);
-	cairo_close_path(cr);
-	cairo_fill(cr);
-	cairo_new_path(cr);
-	cairo_rectangle(cr, x + 3, y - 6, 3, 12);
-	cairo_fill(cr);
-}
-
-static void draw_prev_icon(cairo_t *cr, double x, double y) {
-	cairo_new_path(cr);
-	cairo_move_to(cr, x + 5, y - 6);
-	cairo_line_to(cr, x - 3, y);
-	cairo_line_to(cr, x + 5, y + 6);
-	cairo_close_path(cr);
-	cairo_fill(cr);
-	cairo_new_path(cr);
-	cairo_rectangle(cr, x - 6, y - 6, 3, 12);
-	cairo_fill(cr);
-}
-
 /* ── New Layout Helpers ─────────────────────────────────────────────────── */
 
 static void draw_card_bg(cairo_t *cr, double x, double y, double w, double h) {
@@ -185,14 +141,6 @@ static void draw_card_bg(cairo_t *cr, double x, double y, double w, double h) {
 	cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.07); // panel-border
 	cairo_set_line_width(cr, 1.0);
 	cairo_stroke(cr);
-}
-
-static void hex_to_rgb(const char* hex, double *r, double *g, double *b) {
-	if (hex[0] == '#') hex++;
-	int num = (int)strtol(hex, NULL, 16);
-	*r = ((num >> 16) & 0xFF) / 255.0;
-	*g = ((num >> 8) & 0xFF) / 255.0;
-	*b = (num & 0xFF) / 255.0;
 }
 
 /* ── Main frame renderer ─────────────────────────────────────────────── */
@@ -262,15 +210,10 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_move_to(cr, cx1 + 20, cy + 35);
 	cairo_show_text(cr, "Weather");
 	
-	// Weather icon placeholder (Cloud)
+	// Weather icon placeholder
 	cairo_set_line_width(cr, 2.0);
 	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0); // text-dim
-	
-	cairo_arc(cr, cx1 + 35, cy + 70, 8, M_PI/2, M_PI*1.5);
-	cairo_arc(cr, cx1 + 45, cy + 62, 12, M_PI, 2*M_PI);
-	cairo_arc(cr, cx1 + 55, cy + 68, 10, -M_PI/2, M_PI/2);
-	cairo_move_to(cr, cx1 + 35, cy + 78);
-	cairo_line_to(cr, cx1 + 55, cy + 78);
+	cairo_arc(cr, cx1 + 44, cy + 65, 12, 0, 2*M_PI);
 	cairo_stroke(cr);
 	
 	cairo_set_font_size(cr, 18.0);
@@ -311,50 +254,23 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_fill(cr);
 	
 	// Specs
-	static struct sysinfo_data sinfo = {0};
-	static bool sinfo_fetched = false;
-	if (!sinfo_fetched) {
-		fetch_sysinfo(&sinfo);
-		sinfo_fetched = true;
-	} else {
-		struct sysinfo si;
-		if (sysinfo(&si) == 0) {
-			long days = si.uptime / 86400;
-			long hours = (si.uptime % 86400) / 3600;
-			long mins = (si.uptime % 3600) / 60;
-			if (days > 0) snprintf(sinfo.uptime, sizeof(sinfo.uptime), "%ld days, %ld hours", days, hours);
-			else if (hours > 0) snprintf(sinfo.uptime, sizeof(sinfo.uptime), "%ld hours, %ld mins", hours, mins);
-			else snprintf(sinfo.uptime, sizeof(sinfo.uptime), "%ld mins", mins);
-		}
-	}
-
 	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
-	char spec_buf[128];
-	
-	snprintf(spec_buf, sizeof(spec_buf), "OS  : %s", sinfo.os_name);
 	cairo_move_to(cr, cx1 + 120, cy + 75);
-	cairo_show_text(cr, spec_buf);
-	
-	snprintf(spec_buf, sizeof(spec_buf), "WM  : %s", sinfo.wm_name);
+	cairo_show_text(cr, "OS  : Arch Linux");
 	cairo_move_to(cr, cx1 + 120, cy + 95);
-	cairo_show_text(cr, spec_buf);
-	
-	snprintf(spec_buf, sizeof(spec_buf), "USER: %s", sinfo.user_name);
+	cairo_show_text(cr, "WM  : Hyprland");
 	cairo_move_to(cr, cx1 + 120, cy + 115);
-	cairo_show_text(cr, spec_buf);
-	
-	snprintf(spec_buf, sizeof(spec_buf), "UP  : %s", sinfo.uptime);
+	cairo_show_text(cr, "USER: suyav");
 	cairo_move_to(cr, cx1 + 120, cy + 135);
-	cairo_show_text(cr, spec_buf);
+	cairo_show_text(cr, "UP  : 25 minutes");
 	
 	// Swatches
 	const char* swatches[] = {"#3a3a3a", "#a8c93a", "#5fd9a8", "#7ee0c9", "#6f9b95", "#5b7fd6", "#7ee0c9"};
 	double sw_x = cx1 + 20;
 	for (int i=0; i<7; i++) {
 		rounded_rect(cr, sw_x, cy + 160, 22, 22, 6.0);
-		double sr, sg, sb;
-		hex_to_rgb(swatches[i], &sr, &sg, &sb);
-		cairo_set_source_rgba(cr, sr, sg, sb, 1.0);
+		// simple parse hex to rgb (rough estimation since no helper)
+		cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 1.0); // placeholder color
 		cairo_fill(cr);
 		sw_x += 30;
 	}
@@ -372,35 +288,11 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	
 	cairo_set_font_size(cr, 19.0);
 	cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
-	draw_text_centered(cr, state->mpris_title ? state->mpris_title : "No Media", cx1 + COL_W/2, cy + 60);
+	draw_text_centered(cr, "Chillhop Music", cx1 + COL_W/2, cy + 60);
 	
 	cairo_set_font_size(cr, 13.0);
 	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
-	draw_text_centered(cr, state->mpris_artist ? state->mpris_artist : "", cx1 + COL_W/2, cy + 85);
-
-	// Now Playing Card Controls
-	cairo_set_source_rgba(cr, 1, 1, 1, 0.07);
-	cairo_arc(cr, cx1 + COL_W/2 - 50, cy + 120, 19, 0, 2*M_PI);
-	cairo_fill(cr);
-	cairo_arc(cr, cx1 + COL_W/2 + 50, cy + 120, 19, 0, 2*M_PI);
-	cairo_fill(cr);
-	
-	cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0);
-	cairo_arc(cr, cx1 + COL_W/2, cy + 120, 24, 0, 2*M_PI);
-	cairo_fill(cr);
-
-	// Draw Next and Prev Icons
-	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
-	draw_prev_icon(cr, cx1 + COL_W/2 - 50, cy + 120);
-	draw_next_icon(cr, cx1 + COL_W/2 + 50, cy + 120);
-
-	// Play pause icon
-	cairo_set_source_rgba(cr, 3.0/255.0, 38.0/255.0, 29.0/255.0, 1.0);
-	if (state->mpris_playing) {
-		draw_pause_icon(cr, cx1 + COL_W/2, cy + 120);
-	} else {
-		draw_play_icon(cr, cx1 + COL_W/2, cy + 120);
-	}
+	draw_text_centered(cr, "nymano x Pandrezz -- Fireworks", cx1 + COL_W/2, cy + 85);
 
 	// ── Column 2: Center ───────────────────────────────────────────
 	double cx2 = cx1 + COL_W + GAP;
@@ -485,14 +377,12 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_set_line_width(cr, 1.0);
 	cairo_stroke(cr);
 	
-	// lock icon
-	cairo_set_line_width(cr, 1.5);
+	// lock icon placeholder
 	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
-	rounded_rect(cr, pw_x + 21, pw_y + PW_H/2 - 2, 14, 10, 2.0);
+	cairo_arc(cr, pw_x + 28, pw_y + PW_H/2, 6, 0, 2*M_PI);
 	cairo_stroke(cr);
-	cairo_arc(cr, pw_x + 28, pw_y + PW_H/2 - 2, 4, M_PI, 2*M_PI);
-	cairo_stroke(cr);
-
+	
+	// text or dots
 	size_t pw_len = state->password.len;
 	cairo_set_font_size(cr, 15.0);
 	if (state->auth_state == AUTH_STATE_VALIDATING) {
@@ -534,21 +424,13 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	
 	// Stats Grid
 	double stat_size = (COL_W - 16.0) / 2.0;
-	double percentages[] = {0.28, 0.16, 0.12, 0.24};
 	for (int i=0; i<4; i++) {
 		double sx = cx3 + (i%2) * (stat_size + 16.0);
 		double sy = cy + (i/2) * (stat_size + 16.0);
 		draw_card_bg(cr, sx, sy, stat_size, stat_size);
 		
-		// ring bg
-		cairo_arc(cr, sx + stat_size/2, sy + stat_size/2, stat_size/2 - 25, 0, 2*M_PI);
-		cairo_set_source_rgba(cr, 1, 1, 1, 0.07);
-		cairo_set_line_width(cr, 5.0);
-		cairo_stroke(cr);
-
-		// ring fg
-		double pct = percentages[i];
-		cairo_arc(cr, sx + stat_size/2, sy + stat_size/2, stat_size/2 - 25, -M_PI/2, -M_PI/2 + 2*M_PI*pct);
+		// ring
+		cairo_arc(cr, sx + stat_size/2, sy + stat_size/2, stat_size/2 - 20, -M_PI/2, M_PI);
 		if (i%2 == 0)
 			cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0);
 		else
@@ -558,9 +440,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		cairo_stroke(cr);
 		
 		// icon center placeholder
-		cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
-		cairo_set_line_width(cr, 1.5);
-		cairo_arc(cr, sx + stat_size/2, sy + stat_size/2, 6, 0, 2*M_PI);
+		cairo_arc(cr, sx + stat_size/2, sy + stat_size/2, 10, 0, 2*M_PI);
 		cairo_stroke(cr);
 	}
 	

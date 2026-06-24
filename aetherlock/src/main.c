@@ -17,9 +17,18 @@
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 #include <wordexp.h>
+#include <glib.h>
 #include "background-image.h"
 #include "cairo.h"
 #include "comm.h"
+#include "log.h"
+#include "loop.h"
+#include "mpris_control.h"
+#include "password-buffer.h"
+#include "pool-buffer.h"
+#include "seat.h"
+#include "aetherlock.h"
+#include "ext-session-lock-v1-client-protocol.h"
 
 /* ── Gaussian blur (3-pass box blur approximation) ───────────────────── */
 static void apply_blur(cairo_surface_t *surface, int radius) {
@@ -105,13 +114,6 @@ static cairo_surface_t *blur_surface_copy(cairo_surface_t *src, int radius) {
 	apply_blur(dst, radius);
 	return dst;
 }
-#include "log.h"
-#include "loop.h"
-#include "password-buffer.h"
-#include "pool-buffer.h"
-#include "seat.h"
-#include "aetherlock.h"
-#include "ext-session-lock-v1-client-protocol.h"
 
 static uint32_t parse_color(const char *color) {
 	if (color[0] == '#') {
@@ -153,15 +155,14 @@ static void daemonize(void) {
 		setsid();
 		close(fds[0]);
 		int devnull = open("/dev/null", O_RDWR);
-		dup2(STDOUT_FILENO, devnull);
-		dup2(STDERR_FILENO, devnull);
+		dup2(devnull, STDIN_FILENO);
+		dup2(devnull, STDOUT_FILENO);
+		dup2(devnull, STDERR_FILENO);
 		close(devnull);
 		uint8_t success = 0;
 		if (chdir("/") != 0) {
-			write(fds[1], &success, 1);
-			exit(1);
+			success = 1;
 		}
-		success = 1;
 		if (write(fds[1], &success, 1) != 1) {
 			exit(1);
 		}
@@ -169,13 +170,29 @@ static void daemonize(void) {
 	} else {
 		close(fds[1]);
 		uint8_t success;
-		if (read(fds[0], &success, 1) != 1 || !success) {
+		if (read(fds[0], &success, 1) != 1 || success != 0) {
 			aetherlock_log(LOG_ERROR, "Failed to daemonize");
 			exit(1);
 		}
 		close(fds[0]);
 		exit(0);
 	}
+}
+
+static void on_mpris_state_changed(gboolean is_playing, const char *title, const char *artist, const char *art_url, gpointer user_data) {
+    struct aetherlock_state *state = user_data;
+    state->mpris_playing = is_playing;
+    free(state->mpris_title);
+    state->mpris_title = title ? strdup(title) : NULL;
+    free(state->mpris_artist);
+    state->mpris_artist = artist ? strdup(artist) : NULL;
+    damage_state(state);
+}
+
+static void glib_pump(void *data) {
+    struct aetherlock_state *state = data;
+    g_main_context_iteration(NULL, FALSE);
+    loop_add_timer(state->eventloop, 50, glib_pump, state);
 }
 
 static void destroy_surface(struct aetherlock_surface *surface) {
@@ -1479,6 +1496,10 @@ int main(int argc, char **argv) {
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = SA_RESTART;
 	sigaction(SIGUSR1, &sa, NULL);
+
+	// Setup MPRIS
+	mpris_control_init(on_mpris_state_changed, &state);
+	loop_add_timer(state.eventloop, 50, glib_pump, &state);
 
 	state.run_display = true;
 	while (state.run_display) {

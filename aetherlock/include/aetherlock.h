@@ -113,6 +113,11 @@ struct aetherlock_state {
 	uint32_t cursor_hotspot_x, cursor_hotspot_y;
 	struct wl_surface *hovered_surface;
 	double pointer_x, pointer_y;
+	
+	// MPRIS State
+	bool mpris_playing;
+	char *mpris_title;
+	char *mpris_artist;
 };
 
 struct aetherlock_surface {

@@ -10,6 +10,7 @@
 #include "seat.h"
 #include "loop.h"
 #include "power_actions.h"
+#include "mpris_control.h"
 
 static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t format, int32_t fd, uint32_t size) {
@@ -191,20 +192,22 @@ static void wl_pointer_button(void *data, struct wl_pointer *wl_pointer,
 			double px = state->pointer_x;
 			double py = state->pointer_y;
 			
-			const double PW = 370.0;
-			double cx = PW / 2.0;
-			const double BUTTON_Y = 430.0;
-			const double BUTTON_R = 20.0;
-			const double BUTTON_SP = 75.0;
+			// MPRIS buttons
+			const double COL_W = 400.0;
+			const double PAD = 28.0;
+			double cx1 = PAD;
+			double mpris_cy = 480.0; // cy(360) + 120
+			
+			double mpris_btns[3] = { cx1 + COL_W/2 - 50, cx1 + COL_W/2, cx1 + COL_W/2 + 50 };
+			double mpris_r[3] = { 19.0, 24.0, 19.0 };
 
-			double btns[3] = { cx - BUTTON_SP, cx, cx + BUTTON_SP };
 			for (int i = 0; i < 3; i++) {
-				double dx = px - btns[i];
-				double dy = py - BUTTON_Y;
-				if (dx*dx + dy*dy <= BUTTON_R*BUTTON_R) {
-					if (i == 0) venom_power_off();
-					else if (i == 1) venom_reboot();
-					else if (i == 2) venom_sleep();
+				double dx = px - mpris_btns[i];
+				double dy = py - mpris_cy;
+				if (dx*dx + dy*dy <= mpris_r[i]*mpris_r[i]) {
+					if (i == 0) mpris_control_prev();
+					else if (i == 1) mpris_control_play_pause();
+					else if (i == 2) mpris_control_next();
 				}
 			}
 		}

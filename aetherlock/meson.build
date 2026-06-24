@@ -112,6 +112,8 @@ sources = [
 	'src/seat.c',
 	'src/unicode.c',
 	'src/power_actions.c',
+	'src/sysinfo.c',
+	'src/mpris_control.c',
 ]
 
 if libpam.found()
