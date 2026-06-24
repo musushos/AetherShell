@@ -312,9 +312,10 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_set_font_size(cr, 20.0);
 	cairo_set_source_rgba(cr, 126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0); // teal
 	cairo_move_to(cr, cx1 + 20, cy + 35);
-	cairo_show_text(cr, "Weather");
+	cairo_show_text(cr, state->weather_fetched ? state->weather.location : "Weather");
 	
 	// Weather icon placeholder (Cloud)
+	cairo_new_path(cr);
 	cairo_set_line_width(cr, 2.0);
 	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0); // text-dim
 	
@@ -328,13 +329,13 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_set_font_size(cr, 18.0);
 	cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0); // text-bright
 	cairo_move_to(cr, cx1 + 80, cy + 60);
-	cairo_show_text(cr, "Overcast");
+	cairo_show_text(cr, state->weather.condition);
 	
 	cairo_select_font_face(cr, state->args.font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(cr, 13.0);
 	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
 	cairo_move_to(cr, cx1 + 80, cy + 80);
-	cairo_show_text(cr, "Humidity: 76%");
+	cairo_show_text(cr, state->weather.temperature);
 	
 	cy += w_card_h + 16.0;
 
@@ -521,6 +522,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	const double AV_CY = PAD + 265.0;
 	const double AV_R  = 100.0;
 	
+	cairo_new_path(cr);
 	cairo_arc(cr, mid_x, AV_CY, AV_R, 0, 2.0 * M_PI);
 	cairo_set_source_rgba(cr, 1, 1, 1, 0.08);
 	cairo_set_line_width(cr, 1.0);

@@ -119,6 +119,7 @@ sources = [
 	'src/sysinfo.c',
 	'src/mpris_control.c',
 	'src/sysstats.c',
+	'src/weather.c',
 ]
 
 if libpam.found()

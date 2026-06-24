@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "sysinfo.h"
+#include "weather.h"
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -1534,6 +1536,9 @@ int main(int argc, char **argv) {
 	sysstats_init();
 	sysstats_update(&state.sysstats);
 	loop_add_timer(state.eventloop, 1500, sysstats_timer_cb, &state);
+
+	// Setup Weather
+	weather_init(&state);
 
 	state.run_display = true;
 	while (state.run_display) {

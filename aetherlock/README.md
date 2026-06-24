@@ -62,4 +62,4 @@ group, the binary can be made sgid instead:
     sudo chgrp shadow /usr/local/bin/aetherlock
     sudo chmod g+s /usr/local/bin/aetherlock
 
-aetherlock will drop root permissions shortly after startup.
+ will drop root permissions shortly after startup.

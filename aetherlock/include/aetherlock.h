@@ -10,6 +10,7 @@
 #include "pool-buffer.h"
 #include "seat.h"
 #include "sysstats.h"
+#include "weather.h"
 
 // Indicator state: status of authentication attempt
 enum auth_state {
@@ -126,6 +127,10 @@ struct aetherlock_state {
 	
 	// System stats
 	struct sysstats_data sysstats;
+	
+	// Weather State
+	struct weather_data weather;
+	bool weather_fetched;
 };
 
 struct aetherlock_surface {
