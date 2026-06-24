@@ -8,6 +8,8 @@
 #include "cairo.h"
 #include "background-image.h"
 #include "aetherlock.h"
+#include "sysstats.h"
+#include "vaxp_logo.h"
 #include "log.h"
 #include "sysinfo.h"
 #include <sys/sysinfo.h>
@@ -352,14 +354,9 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_move_to(cr, cx1 + 56, cy + 36);
 	cairo_show_text(cr, "VAXP.org");
 	
-	// Arch logo placeholder (triangle)
-	cairo_new_path(cr);
-	cairo_move_to(cr, cx1 + 60, cy + 70);
-	cairo_line_to(cr, cx1 + 90, cy + 130);
-	cairo_line_to(cr, cx1 + 30, cy + 130);
-	cairo_close_path(cr);
-	cairo_set_source_rgba(cr, 95.0/255.0, 179.0/255.0, 224.0/255.0, 1.0);
-	cairo_fill(cr);
+	// VAXP Logo
+	cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0); // White-ish color
+	draw_vaxp_logo(cr, cx1 + 55, cy + 92, 0.086);
 	
 	// Specs
 	static struct sysinfo_data sinfo = {0};
