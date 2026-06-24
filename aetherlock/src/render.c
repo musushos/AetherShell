@@ -4,6 +4,7 @@
 #include <time.h>
 #include <string.h>
 #include <wayland-client.h>
+#include <pango/pangocairo.h>
 #include "cairo.h"
 #include "background-image.h"
 #include "aetherlock.h"
@@ -126,40 +127,34 @@ static double draw_text_centered(cairo_t *cr, const char *text,
 	return ext.width;
 }
 
-static double draw_text_centered_truncated(cairo_t *cr, const char *text,
-		double cx, double y, double max_width) {
-	if (!text || !*text) return 0.0;
-	cairo_text_extents_t ext;
-	cairo_text_extents(cr, text, &ext);
-	if (ext.width <= max_width) {
-		cairo_move_to(cr, cx - ext.width / 2.0 - ext.x_bearing, y);
-		cairo_show_text(cr, text);
-		return ext.width;
-	}
-
-	char buf[512];
-	strncpy(buf, text, sizeof(buf) - 1);
-	buf[sizeof(buf) - 1] = '\0';
+static void draw_text_pango(cairo_t *cr, const char *text, const char *font_family, double font_size, bool bold, double cx, double cy, double max_width) {
+	PangoLayout *layout = pango_cairo_create_layout(cr);
+	pango_layout_set_text(layout, text, -1);
 	
-	if (!g_utf8_validate(buf, -1, NULL)) {
-		return 0.0;
+	PangoFontDescription *desc = pango_font_description_from_string(font_family);
+	pango_font_description_set_absolute_size(desc, font_size * PANGO_SCALE);
+	if (bold) {
+		pango_font_description_set_weight(desc, PANGO_WEIGHT_BOLD);
+	}
+	pango_layout_set_font_description(layout, desc);
+	pango_font_description_free(desc);
+	
+	if (max_width > 0) {
+		pango_layout_set_width(layout, max_width * PANGO_SCALE);
+		pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+		pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
 	}
 
-	char *end = buf + strlen(buf);
-	while (end > buf) {
-		end = g_utf8_find_prev_char(buf, end);
-		if (!end) break;
-		
-		char temp[512];
-		snprintf(temp, sizeof(temp), "%.*s...", (int)(end - buf), buf);
-		cairo_text_extents(cr, temp, &ext);
-		if (ext.width <= max_width) {
-			cairo_move_to(cr, cx - ext.width / 2.0 - ext.x_bearing, y);
-			cairo_show_text(cr, temp);
-			return ext.width;
-		}
-	}
-	return 0.0;
+	int w, h;
+	pango_layout_get_pixel_size(layout, &w, &h);
+
+	// Pango uses top-left origin, cy is usually bottom/baseline for cairo.
+	// We'll treat cy as the baseline if we were using cairo, so offset by an estimated baseline.
+	// But actually, just center it vertically around cy-h/2 for visual consistency with other elements
+	cairo_move_to(cr, cx - w / 2.0, cy - h / 1.5); // Adjusting cy to approximate baseline
+	pango_cairo_update_layout(cr, layout);
+	pango_cairo_show_layout(cr, layout);
+	g_object_unref(layout);
 }
 
 static void draw_person_icon(cairo_t *cr, double cx, double cy, double r) {
@@ -453,13 +448,12 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		text_cx = cx1 + 20 + size + 16 + max_text_w / 2.0;
 	}
 
-	cairo_set_font_size(cr, 19.0);
+	// Text rendering with Pango for font fallback
 	cairo_set_source_rgba(cr, 230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0);
-	draw_text_centered_truncated(cr, state->mpris_title ? state->mpris_title : "No Media", text_cx, cy + 60, max_text_w);
+	draw_text_pango(cr, state->mpris_title ? state->mpris_title : "No Media", state->args.font, 18.0, true, text_cx, cy + 60, max_text_w);
 	
-	cairo_set_font_size(cr, 13.0);
 	cairo_set_source_rgba(cr, 159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0);
-	draw_text_centered_truncated(cr, state->mpris_artist ? state->mpris_artist : "", text_cx, cy + 85, max_text_w);
+	draw_text_pango(cr, state->mpris_artist ? state->mpris_artist : "", state->args.font, 13.0, false, text_cx, cy + 85, max_text_w);
 
 	// Now Playing Card Controls
 	cairo_set_source_rgba(cr, 1, 1, 1, 0.07);

@@ -33,6 +33,8 @@ wayland_protos = dependency('wayland-protocols', version: '>=1.25', fallback: 'w
 wayland_scanner = dependency('wayland-scanner', version: '>=1.15.0', native: true)
 xkbcommon = dependency('xkbcommon')
 cairo = dependency('cairo')
+pango = dependency('pango')
+pangocairo = dependency('pangocairo')
 gdk_pixbuf = dependency('gdk-pixbuf-2.0', required: get_option('gdk-pixbuf'))
 glib = dependency('glib-2.0')
 gio = dependency('gio-2.0')
@@ -88,6 +90,8 @@ subdir('include')
 
 dependencies = [
 	cairo,
+	pango,
+	pangocairo,
 	gdk_pixbuf,
 	math,
 	rt,
