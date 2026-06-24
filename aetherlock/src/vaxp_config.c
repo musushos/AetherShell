@@ -36,7 +36,9 @@ void config_load(struct aetherlock_state *state) {
     // Set absolute defaults
     struct color_rgba def_panel_bg = {20.0/255.0, 28.0/255.0, 30.0/255.0, 0.55};
     struct color_rgba def_panel_border = {1.0, 1.0, 1.0, 0.07};
+    struct color_rgba def_outer_border = {1.0, 1.0, 1.0, 0.07};
     double def_panel_border_width = 1.0;
+    double def_outer_border_width = 1.0;
     struct color_rgba def_text_bright = {230.0/255.0, 245.0/255.0, 240.0/255.0, 1.0};
     struct color_rgba def_text_dim = {159.0/255.0, 179.0/255.0, 176.0/255.0, 1.0};
     struct color_rgba def_accent = {126.0/255.0, 224.0/255.0, 201.0/255.0, 1.0};
@@ -65,6 +67,8 @@ void config_load(struct aetherlock_state *state) {
             "PanelBackground=#141c1e8c\n"
             "PanelBorder=#ffffff12\n"
             "PanelBorderWidth=1.0\n"
+            "OuterBorder=#ffffff12\n"
+            "OuterBorderWidth=1.0\n"
             "TextBright=#e6f5f0ff\n"
             "TextDim=#9fb3b0ff\n"
             "Accent=#7ee0c9ff\n"
@@ -90,6 +94,7 @@ void config_load(struct aetherlock_state *state) {
         
         gchar *c_panel_bg = g_key_file_get_string(kf, "Colors", "PanelBackground", NULL);
         gchar *c_panel_border = g_key_file_get_string(kf, "Colors", "PanelBorder", NULL);
+        gchar *c_outer_border = g_key_file_get_string(kf, "Colors", "OuterBorder", NULL);
         gchar *c_text_bright = g_key_file_get_string(kf, "Colors", "TextBright", NULL);
         gchar *c_text_dim = g_key_file_get_string(kf, "Colors", "TextDim", NULL);
         gchar *c_accent = g_key_file_get_string(kf, "Colors", "Accent", NULL);
@@ -102,8 +107,15 @@ void config_load(struct aetherlock_state *state) {
             state->vaxp_colors.panel_border_width = def_panel_border_width;
         }
         
+        if (g_key_file_has_key(kf, "Colors", "OuterBorderWidth", NULL)) {
+            state->vaxp_colors.outer_border_width = g_key_file_get_double(kf, "Colors", "OuterBorderWidth", NULL);
+        } else {
+            state->vaxp_colors.outer_border_width = def_outer_border_width;
+        }
+        
         parse_color(c_panel_bg, &state->vaxp_colors.panel_bg, def_panel_bg);
         parse_color(c_panel_border, &state->vaxp_colors.panel_border, def_panel_border);
+        parse_color(c_outer_border, &state->vaxp_colors.outer_border, def_outer_border);
         parse_color(c_text_bright, &state->vaxp_colors.text_bright, def_text_bright);
         parse_color(c_text_dim, &state->vaxp_colors.text_dim, def_text_dim);
         parse_color(c_accent, &state->vaxp_colors.accent, def_accent);
@@ -112,6 +124,7 @@ void config_load(struct aetherlock_state *state) {
         
         g_free(c_panel_bg);
         g_free(c_panel_border);
+        g_free(c_outer_border);
         g_free(c_text_bright);
         g_free(c_text_dim);
         g_free(c_accent);
@@ -121,7 +134,9 @@ void config_load(struct aetherlock_state *state) {
         // Fallback to defaults
         state->vaxp_colors.panel_bg = def_panel_bg;
         state->vaxp_colors.panel_border = def_panel_border;
+        state->vaxp_colors.outer_border = def_outer_border;
         state->vaxp_colors.panel_border_width = def_panel_border_width;
+        state->vaxp_colors.outer_border_width = def_outer_border_width;
         state->vaxp_colors.text_bright = def_text_bright;
         state->vaxp_colors.text_dim = def_text_dim;
         state->vaxp_colors.accent = def_accent;

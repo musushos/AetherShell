@@ -15,7 +15,9 @@ struct color_rgba {
 struct vaxp_colors {
     struct color_rgba panel_bg;
     struct color_rgba panel_border;
+    struct color_rgba outer_border;
     double panel_border_width;
+    double outer_border_width;
     struct color_rgba text_bright;
     struct color_rgba text_dim;
     struct color_rgba accent;

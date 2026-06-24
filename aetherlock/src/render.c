@@ -302,8 +302,8 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	rounded_rect(cr, 0, 0, PW, PH, 22.0);
 	cairo_set_source_rgba(cr, 8.0/255.0, 14.0/255.0, 14.0/255.0, 0.45);
 	cairo_fill_preserve(cr);
-	set_color(cr, state->vaxp_colors.panel_border);
-	cairo_set_line_width(cr, 1.0);
+	set_color(cr, state->vaxp_colors.outer_border);
+	cairo_set_line_width(cr, state->vaxp_colors.outer_border_width);
 	cairo_stroke(cr);
 
 	/* ── Column 1: Left ───────────────────────────────────────────── */
