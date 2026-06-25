@@ -26,7 +26,7 @@ typedef struct {
 
 static gboolean ui_ready = FALSE;
 static GtkCssProvider *current_provider = NULL;
-static AuthTheme current_theme = THEME_POLKIT;
+static AuthConfig current_config;
 
 static void secure_clear(void *ptr, size_t len) {
     volatile unsigned char *p = ptr;
@@ -98,160 +98,147 @@ static void load_css(void) {
         current_provider = NULL;
     }
 
-    const char *css = "";
+    gchar *css = NULL;
 
-    if (current_theme == THEME_MINIMAL) {
-        css = 
+    if (current_config.theme == THEME_MINIMAL) {
+        css = g_strdup_printf(
             "/* Main dialog window background and padding */\n"
-            ".min-dlg { background: rgba(0, 0, 0, 0.3); border-radius: 20px; padding: 32px 28px; }\n"
-           
+            ".min-dlg { background: %s; border-radius: 20px; padding: 32px 28px; }\n"
             "/* Title text (e.g. 'Confirm Identity') */\n"
-            ".min-title { font-size: 16px; font-weight: bold; color: rgba(255, 255, 255, 1); margin-bottom: 6px; }\n"
-           
+            ".min-title { font-size: 16px; font-weight: bold; color: %s; margin-bottom: 6px; }\n"
             "/* Subtitle text */\n"
-            ".min-sub { font-size: 13px; color: rgba(255, 255, 255, 1); margin-bottom: 22px; }\n"
-           
+            ".min-sub { font-size: 13px; color: %s; margin-bottom: 22px; }\n"
             "/* Dynamic request description text */\n"
-            ".min-desc { font-size: 13px; color: rgba(255, 255, 255, 1); margin-bottom: 10px; }\n"
-           
+            ".min-desc { font-size: 13px; color: %s; margin-bottom: 10px; }\n"
             "/* Password input field background and text */\n"
-            ".min-input { background: rgba(0, 0, 0, 0.3); color: rgba(255, 255, 255, 1); border: none; border-radius: 12px; padding: 10px 14px; }\n"
-
+            ".min-input { background: %s; color: %s; border: none; border-radius: 12px; padding: 10px 14px; }\n"
             "/* Password input field when focused */\n"
-            ".min-input:focus { background: rgba(0, 0, 0, 0.3); border: 2px solid rgba(21, 23, 28, 1.0); }\n"
-            
+            ".min-input:focus { background: %s; border: 2px solid %s; }\n"
             "/* Confirm/Authenticate button */\n"
-            ".min-btn-primary { background: rgba(0, 0, 0, 0.3); color: rgba(255, 255, 255, 1.0); border-radius: 12px; padding: 10px; font-weight: bold; }\n"
-            
+            ".min-btn-primary { background: %s; color: %s; border-radius: 12px; padding: 10px; font-weight: bold; }\n"
             "/* Confirm/Authenticate button on hover */\n"
-            ".min-btn-primary:hover { background: rgba(0, 0, 0, 1.0); }\n"
-            
+            ".min-btn-primary:hover { background: %s; }\n"
             "/* Cancel button */\n"
-            ".min-btn-secondary { background: rgba(241, 242, 245, 1.0); color: rgba(21, 23, 28, 1.0); border-radius: 12px; padding: 10px; }\n"
-            
+            ".min-btn-secondary { background: %s; color: %s; border-radius: 12px; padding: 10px; }\n"
             "/* Cancel button on hover */\n"
-            ".min-btn-secondary:hover { background: rgba(232, 234, 239, 1.0); }\n"
-            
+            ".min-btn-secondary:hover { background: %s; }\n"
             "/* Avatar ring container */\n"
-            ".min-ring { background: rgba(21, 23, 28, 1.0); border-radius: 32px; min-width: 64px; min-height: 64px; }";
-    } else if (current_theme == THEME_TERMINAL) {
-        css = 
+            ".min-ring { background: %s; border-radius: 32px; min-width: 64px; min-height: 64px; }",
+            current_config.minimal.bg, current_config.minimal.text,
+            current_config.minimal.text, current_config.minimal.text,
+            current_config.minimal.input_bg, current_config.minimal.input_text,
+            current_config.minimal.input_bg, current_config.minimal.input_focus,
+            current_config.minimal.btn_primary, current_config.minimal.text,
+            current_config.minimal.btn_primary_hover,
+            current_config.minimal.btn_secondary, current_config.minimal.input_focus,
+            current_config.minimal.btn_secondary_hover,
+            current_config.minimal.ring
+        );
+    } else if (current_config.theme == THEME_TERMINAL) {
+        css = g_strdup_printf(
             "/* Main dialog window background and border */\n"
-            ".term-dlg { background: rgba(0, 0, 0, 0.3); border-radius: 10px; border: 1px solid rgba(0, 0, 0, 0.4); font-family: monospace; }\n"
-           
+            ".term-dlg { background: %s; border-radius: 10px; border: 1px solid %s; font-family: monospace; }\n"
             "/* Top title bar (fake window controls area) */\n"
-            ".term-bar { background: rgba(0, 0, 0, 0); padding: 8px 12px; }\n"
-           
+            ".term-bar { background: %s; padding: 8px 12px; }\n"
             "/* Fake window control button base class */\n"
             ".term-dot { border-radius: 10px; min-width: 12px; min-height: 12px; }\n"
-           
             "/* Close button color */\n"
-            ".term-dot-red { background-color: rgba(255, 95, 87, 1.0); }\n"
-           
+            ".term-dot-red { background-color: %s; }\n"
             "/* Minimize button color */\n"
-            ".term-dot-yellow { background-color: rgba(255, 189, 46, 1.0); }\n"
-           
+            ".term-dot-yellow { background-color: %s; }\n"
             "/* Maximize button color */\n"
-            ".term-dot-green { background-color: rgba(40, 200, 64, 1.0); }\n"
-           
+            ".term-dot-green { background-color: %s; }\n"
             "/* Top bar title/path text */\n"
-            ".term-path { color: rgba(255, 255, 255, 0.91); font-size: 11px; }\n"
-           
+            ".term-path { color: %s; font-size: 11px; }\n"
             "/* Main terminal body container */\n"
-            ".term-body { padding: 20px; font-size: 13px; color: rgba(0, 0, 0, 0.4); }\n"
-           
+            ".term-body { padding: 20px; font-size: 13px; color: %s; }\n"
             "/* Prompt text (e.g. user@host $) */\n"
-            ".term-prompt { color: rgba(88, 224, 140, 1.0); font-weight: bold; }\n"
-           
+            ".term-prompt { color: %s; font-weight: bold; }\n"
             "/* Dynamic request description text */\n"
-            ".term-cmd { color: rgba(232, 233, 236, 1.0); }\n"
-            
+            ".term-cmd { color: %s; }\n"
             "/* Warning text (if any) */\n"
-            ".term-warn { color: rgba(255, 180, 84, 1.0); }\n"
-            
+            ".term-warn { color: %s; }\n"
             "/* Password input row container */\n"
-            ".term-input-row { background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(35, 39, 48, 1.0); border-radius: 6px; padding: 6px; }\n"
-            
+            ".term-input-row { background: %s; border: 1px solid %s; border-radius: 6px; padding: 6px; }\n"
             "/* Password input row when focused */\n"
-            ".term-input-row:focus-within { border-color: rgba(88, 224, 140, 1.0); }\n"
-            
+            ".term-input-row:focus-within { border-color: %s; }\n"
             "/* 'password:' prefix text */\n"
-            ".term-pfx { color: rgba(88, 224, 140, 1.0); }\n"
-            
+            ".term-pfx { color: %s; }\n"
             "/* Password input field */\n"
-            ".term-input { background: transparent; color: rgba(255, 255, 255, 1.0); border: none; }\n"
-            
+            ".term-input { background: transparent; color: %s; border: none; }\n"
             "/* Bottom hint text (e.g. Press Enter...) */\n"
-            ".term-hint { color: rgba(90, 96, 110, 1.0); font-size: 11px; margin-top: 10px; }";
+            ".term-hint { color: %s; font-size: 11px; margin-top: 10px; }",
+            current_config.terminal.bg, current_config.terminal.border, current_config.terminal.bar,
+            current_config.terminal.dot_red, current_config.terminal.dot_yellow, current_config.terminal.dot_green,
+            current_config.terminal.path, current_config.terminal.text, current_config.terminal.prompt,
+            current_config.terminal.cmd, current_config.terminal.warn,
+            current_config.terminal.input_bg, current_config.terminal.border, current_config.terminal.prompt,
+            current_config.terminal.prompt, current_config.terminal.input_text, current_config.terminal.hint
+        );
     } else {
-        // THEME_POLKIT
-        css = 
+        css = g_strdup_printf(
             "/* Main dialog window background and border */\n"
-            ".pk-dlg { background: rgba(0, 0, 0, 0.3); border-radius: 10px; border: 1px solid rgba(0, 0, 0, 0.4); }\n"
-          
+            ".pk-dlg { background: %s; border-radius: 10px; border: 1px solid %s; }\n"
             "/* Header section padding */\n"
             ".pk-head { padding: 18px 20px 0; }\n"
-          
             "/* Lock icon background container */\n"
-            ".pk-lock { background: rgba(21, 23, 28, 1.0); border-radius: 10px; min-width: 44px; min-height: 44px; }\n"
-           
+            ".pk-lock { background: %s; border-radius: 10px; min-width: 44px; min-height: 44px; }\n"
             "/* Main title text */\n"
-            ".pk-title { font-size: 14px; font-weight: bold; color: rgba(255, 255, 255, 1.0); }\n"
-          
+            ".pk-title { font-size: 14px; font-weight: bold; color: %s; }\n"
             "/* Subtitle/App description text */\n"
-            ".pk-app { font-size: 12px; color: rgba(255, 255, 255, 1.0); }\n"
-          
+            ".pk-app { font-size: 12px; color: %s; }\n"
             "/* Dynamic request description text */\n"
-            ".pk-desc { font-size: 12px; color: rgba(255, 255, 255, 1.0); }\n"
-           
+            ".pk-desc { font-size: 12px; color: %s; }\n"
             "/* Horizontal divider line */\n"
-            ".pk-divider { background: rgba(21, 23, 28, 1.0); min-height: 1px; }\n"
-           
+            ".pk-divider { background: %s; min-height: 1px; }\n"
             "/* Main body container padding */\n"
             ".pk-body { padding: 0 20px 20px; }\n"
-           
             "/* User information row background */\n"
-            ".pk-user-row { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 8px 10px; }\n"
-           
+            ".pk-user-row { background: %s; border-radius: 8px; padding: 8px 10px; }\n"
             "/* User avatar background/border */\n"
-            ".pk-avatar { background: rgba(21, 23, 28, 1.0); border-radius: 14px; min-width: 28px; min-height: 28px; }\n"
-           
+            ".pk-avatar { background: %s; border-radius: 14px; min-width: 28px; min-height: 28px; }\n"
             "/* User name text */\n"
-            ".pk-user-label { font-size: 12px; color: rgba(255, 255, 255, 1.0); }\n"
-           
+            ".pk-user-label { font-size: 12px; color: %s; }\n"
             "/* Password input field */\n"
-            ".pk-input { background: rgba(0, 0, 0, 0.3); color: rgba(255, 255, 255, 1.0); border: none; border-radius: 8px; padding: 8px 12px; }\n"
-           
+            ".pk-input { background: %s; color: %s; border: none; border-radius: 8px; padding: 8px 12px; }\n"
             "/* Password input field when focused */\n"
-            ".pk-input:focus { background: rgba(0, 0, 0, 0.3); border: 2px solid rgba(21, 23, 28, 1.0); }\n"
-            
+            ".pk-input:focus { background: %s; border: 2px solid %s; }\n"
             "/* Bottom actions bar background */\n"
             ".pk-actions { background: transparent; padding: 16px 20px; }\n"
-           
             "/* Standard button (Cancel) */\n"
-            ".pk-btn { background: rgba(241, 242, 245, 1.0); color: rgba(21, 23, 28, 1.0); border: none; border-radius: 8px; padding: 8px; }\n"
-           
+            ".pk-btn { background: %s; color: %s; border: none; border-radius: 8px; padding: 8px; }\n"
             "/* Standard button on hover */\n"
-            ".pk-btn:hover { background: rgba(232, 234, 239, 1.0); }\n"
-            
+            ".pk-btn:hover { background: %s; }\n"
             "/* Primary button (Authenticate) */\n"
-            ".pk-btn-primary { background: rgba(0, 0, 0, 0.3); color: rgba(255, 255, 255, 1.0); border: none; font-weight: bold; }\n"
-           
+            ".pk-btn-primary { background: %s; color: %s; border: none; font-weight: bold; }\n"
             "/* Primary button on hover */\n"
-            ".pk-btn-primary:hover { background: rgba(0, 0, 0, 1.0); }";
+            ".pk-btn-primary:hover { background: %s; }",
+            current_config.polkit.bg, current_config.polkit.border,
+            current_config.polkit.accent,
+            current_config.polkit.text, current_config.polkit.text, current_config.polkit.text,
+            current_config.polkit.accent,
+            current_config.polkit.user_row_bg,
+            current_config.polkit.accent, current_config.polkit.text,
+            current_config.polkit.input_bg, current_config.polkit.input_text,
+            current_config.polkit.input_bg, current_config.polkit.accent,
+            current_config.polkit.btn_bg, current_config.polkit.text, current_config.polkit.btn_hover,
+            current_config.polkit.accent, current_config.polkit.text, current_config.polkit.accent_hover
+        );
     }
 
     current_provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(current_provider, css, -1, NULL);
+    g_free(css);
+
     GdkScreen *screen = gdk_screen_get_default();
     if (screen) {
         gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(current_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     }
 }
 
-void auth_ui_set_theme(AuthTheme theme) {
-    if (current_theme != theme || !current_provider) {
-        current_theme = theme;
+void auth_ui_set_theme(AuthConfig *config) {
+    if (memcmp(&current_config, config, sizeof(AuthConfig)) != 0 || !current_provider) {
+        memcpy(&current_config, config, sizeof(AuthConfig));
         load_css();
     }
 }
@@ -316,12 +303,12 @@ static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event, gpointer us
     return TRUE;
 }
 
-int auth_ui_init(AuthTheme theme) {
+int auth_ui_init(AuthConfig *config) {
     if (ui_ready) return 0;
     if (!gtk_init_check(NULL, NULL)) return -1;
     ui_ready = TRUE;
     gtk_window_set_default_icon_name("dialog-password");
-    auth_ui_set_theme(theme);
+    auth_ui_set_theme(config);
     return 0;
 }
 
@@ -555,8 +542,8 @@ int auth_ui_get_password(const char *message, const char *username, char *passwo
     }
 
     int w = DIALOG_WIDTH_POLKIT, h = DIALOG_HEIGHT_POLKIT;
-    if (current_theme == THEME_MINIMAL) { w = DIALOG_WIDTH_MINIMAL; h = DIALOG_HEIGHT_MINIMAL; }
-    else if (current_theme == THEME_TERMINAL) { w = DIALOG_WIDTH_TERMINAL; h = DIALOG_HEIGHT_TERMINAL; }
+    if (current_config.theme == THEME_MINIMAL) { w = DIALOG_WIDTH_MINIMAL; h = DIALOG_HEIGHT_MINIMAL; }
+    else if (current_config.theme == THEME_TERMINAL) { w = DIALOG_WIDTH_TERMINAL; h = DIALOG_HEIGHT_TERMINAL; }
 
     gtk_window_set_title(GTK_WINDOW(state.window), "Authentication Required");
     gtk_window_set_default_size(GTK_WINDOW(state.window), w, h);
@@ -584,8 +571,8 @@ int auth_ui_get_password(const char *message, const char *username, char *passwo
         gtk_window_set_position(GTK_WINDOW(state.window), GTK_WIN_POS_CENTER_ALWAYS);
     }
 
-    if (current_theme == THEME_MINIMAL) build_minimal_ui(&state, message, username);
-    else if (current_theme == THEME_TERMINAL) build_terminal_ui(&state, message, username);
+    if (current_config.theme == THEME_MINIMAL) build_minimal_ui(&state, message, username);
+    else if (current_config.theme == THEME_TERMINAL) build_terminal_ui(&state, message, username);
     else build_polkit_ui(&state, message, username);
 
     g_signal_connect(state.window, "delete-event", G_CALLBACK(on_window_delete), &state);

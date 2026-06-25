@@ -112,7 +112,7 @@ static void venom_agent_initiate_authentication_real(PolkitAgentListener  *liste
 
     AuthConfig config;
     config_load(&config);
-    auth_ui_set_theme(config.theme);
+    auth_ui_set_theme(&config);
 
     PolkitIdentity *identity = POLKIT_IDENTITY(identities->data);
     
@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
     config_load(&config);
 
     // Initialize UI
-    if (auth_ui_init(config.theme) < 0) {
+    if (auth_ui_init(&config) < 0) {
         fprintf(stderr, "Failed to initialize authentication UI\n");
         return 1;
     }

@@ -1,6 +1,6 @@
 [Unit]
 Description=Venom Authentication Agent
-Documentation=https://github.com/vaxp/venom-auth
+Documentation=https://github.com/vaxp/vauth
 After=graphical-session.target
 PartOf=graphical-session.target
 

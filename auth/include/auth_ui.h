@@ -7,10 +7,10 @@
 #define UI_RESULT_CANCEL   0
 #define UI_RESULT_ERROR   -1
 
-int auth_ui_init(AuthTheme theme);
+int auth_ui_init(AuthConfig *config);
 void auth_ui_cleanup(void);
 
-void auth_ui_set_theme(AuthTheme theme);
+void auth_ui_set_theme(AuthConfig *config);
 
 int auth_ui_get_password(const char *message,
                          const char *username,
