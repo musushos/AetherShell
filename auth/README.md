@@ -1,4 +1,4 @@
-## Venom Auth
+## Auth
 
 `auth` is a focused Polkit authentication agent.
 
