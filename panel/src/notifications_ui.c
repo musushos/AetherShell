@@ -82,16 +82,22 @@ static void on_notifications_updated(GList *history, gpointer user_data) {
             gtk_widget_set_hexpand(card, TRUE);
 
             GtkWidget *icon;
-            if (n->icon_path && strlen(n->icon_path) > 0 && g_file_test(n->icon_path, G_FILE_TEST_EXISTS)) {
-                GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(n->icon_path, 32, 32, TRUE, NULL);
-                if (pixbuf) {
-                    icon = gtk_image_new_from_pixbuf(pixbuf);
-                    g_object_unref(pixbuf);
+            if (n->icon_path && strlen(n->icon_path) > 0) {
+                if (g_path_is_absolute(n->icon_path) || g_file_test(n->icon_path, G_FILE_TEST_EXISTS)) {
+                    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(n->icon_path, 32, 32, TRUE, NULL);
+                    if (pixbuf) {
+                        icon = gtk_image_new_from_pixbuf(pixbuf);
+                        g_object_unref(pixbuf);
+                    } else {
+                        icon = gtk_image_new_from_icon_name("preferences-system-details", GTK_ICON_SIZE_DND);
+                    }
                 } else {
-                    icon = gtk_image_new_from_icon_name("preferences-system-details", GTK_ICON_SIZE_DND);
+                    icon = gtk_image_new_from_icon_name(n->icon_path, GTK_ICON_SIZE_DND);
+                    gtk_image_set_pixel_size(GTK_IMAGE(icon), 32);
                 }
             } else {
                 icon = gtk_image_new_from_icon_name("preferences-system-details", GTK_ICON_SIZE_DND);
+                gtk_image_set_pixel_size(GTK_IMAGE(icon), 32);
             }
             gtk_widget_set_valign(icon, GTK_ALIGN_START);
 
