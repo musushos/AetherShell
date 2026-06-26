@@ -79,7 +79,7 @@ void clear_history();
 static NotificationItem *find_history_item_by_id(guint32 id);
 static VenomNotification *find_active_notification_by_id(guint32 id);
 static void on_ui_action(guint32 id, const char *action_key, gpointer user_data);
-static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, GVariant *hints, gint timeout, const char *desktop_entry);
+static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, GVariant *hints, gint timeout, const char *desktop_entry, gint value);
 static gboolean notify_is_wayland_session(void);
 
 // --- إدارة السجل (History Logic) ---
@@ -359,7 +359,7 @@ static gboolean is_error_or_warning(const char *summary, const char *body, const
 }
 
 // --- إنشاء الإشعار وعرضه ---
-static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, GVariant *hints, gint timeout, const char *desktop_entry) {
+static guint32 create_new_notification(const char *app_name, guint32 replaces_id, const char *summary, const char *body, const char *icon, GVariant *actions, GVariant *hints, gint timeout, const char *desktop_entry, gint value) {
     // تحديد نوع الصوت المناسب (تنبيه عادي أم تحذير/خطأ)
     OsdSoundEvent sound_event = is_error_or_warning(summary, body, icon, hints) ? OSD_SOUND_ERROR : OSD_SOUND_NOTIFICATION;
 
@@ -411,13 +411,15 @@ static guint32 create_new_notification(const char *app_name, guint32 replaces_id
         existing_notification->icon_path = g_strdup(icon);
         g_free(existing_notification->desktop_entry);
         existing_notification->desktop_entry = g_strdup(desktop_entry);
-        notify_ui_update_content(existing_notification, summary, body, icon);
+        existing_notification->value = value;
+        notify_ui_update_content(existing_notification, summary, body, icon, value);
         notify_ui_reposition(active_notifications, notify_use_layer_shell);
 
         if (existing_notification->timeout_source > 0) {
             g_source_remove(existing_notification->timeout_source);
         }
         if (timeout <= 0) timeout = DEFAULT_TIMEOUT;
+        existing_notification->original_timeout = timeout;
         existing_notification->timeout_source = g_timeout_add(timeout, on_timeout, GUINT_TO_POINTER(existing_notification->id));
         osd_sound_play(sound_event);
         emit_history_updated_signal(NULL);
@@ -429,8 +431,9 @@ static guint32 create_new_notification(const char *app_name, guint32 replaces_id
     n->app_name = g_strdup(app_name);
     n->icon_path = g_strdup(icon);
     n->desktop_entry = g_strdup(desktop_entry);
+    n->value = value;
 
-    notify_ui_setup_window(n, summary, body, icon, actions, notify_use_layer_shell, on_ui_action, NULL);
+    notify_ui_setup_window(n, summary, body, icon, actions, notify_use_layer_shell, value, on_ui_action, NULL);
     
     active_notifications = g_list_append(active_notifications, n);
     
@@ -444,8 +447,24 @@ static guint32 create_new_notification(const char *app_name, guint32 replaces_id
     emit_history_updated_signal(NULL);
 
     if (timeout <= 0) timeout = DEFAULT_TIMEOUT;
+    n->original_timeout = timeout;
     n->timeout_source = g_timeout_add(timeout, on_timeout, GUINT_TO_POINTER(n->id));
     return n->id;
+}
+
+void notify_pause_timeout(guint32 id) {
+    VenomNotification *n = find_active_notification_by_id(id);
+    if (n && n->timeout_source > 0) {
+        g_source_remove(n->timeout_source);
+        n->timeout_source = 0;
+    }
+}
+
+void notify_resume_timeout(guint32 id) {
+    VenomNotification *n = find_active_notification_by_id(id);
+    if (n && n->timeout_source == 0) {
+        n->timeout_source = g_timeout_add(n->original_timeout, on_timeout, GUINT_TO_POINTER(n->id));
+    }
 }
 
 // --- معالجة اتصالات D-Bus ---
@@ -469,6 +488,7 @@ static void handle_method_call(GDBusConnection *connection, const gchar *sender,
                       &summary, &body, &actions, &hints, &expire_timeout);
 
         gchar *desktop_entry = NULL;
+        gint value = -1;
         if (hints) {
             GVariantIter iter;
             gchar *key;
@@ -478,6 +498,16 @@ static void handle_method_call(GDBusConnection *connection, const gchar *sender,
                 if (g_strcmp0(key, "desktop-entry") == 0) {
                     if (g_variant_is_of_type(val, G_VARIANT_TYPE_STRING)) {
                         desktop_entry = g_strdup(g_variant_get_string(val, NULL));
+                    }
+                } else if (g_strcmp0(key, "value") == 0) {
+                    if (g_variant_is_of_type(val, G_VARIANT_TYPE_INT32)) {
+                        value = g_variant_get_int32(val);
+                    } else if (g_variant_is_of_type(val, G_VARIANT_TYPE_VARIANT)) {
+                        GVariant *inner = g_variant_get_variant(val);
+                        if (g_variant_is_of_type(inner, G_VARIANT_TYPE_INT32)) {
+                            value = g_variant_get_int32(inner);
+                        }
+                        g_variant_unref(inner);
                     }
                 }
                 g_free(key);
@@ -558,7 +588,7 @@ static void handle_method_call(GDBusConnection *connection, const gchar *sender,
             }
         }
 
-        guint32 notification_id = create_new_notification(app_name, replaces_id, summary, body, final_icon, actions, hints, expire_timeout, desktop_entry);
+        guint32 notification_id = create_new_notification(app_name, replaces_id, summary, body, final_icon, actions, hints, expire_timeout, desktop_entry, value);
         g_free(final_icon);
         g_free(desktop_entry);
         

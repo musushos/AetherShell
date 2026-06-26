@@ -4,6 +4,36 @@
 #if defined(GDK_WINDOWING_WAYLAND)
 #include <gdk/gdkwayland.h>
 #endif
+#include "osd_protocols.h"
+#include "notify.h"
+
+static gboolean is_valid_markup(const gchar *text) {
+    gchar *wrapped = g_strdup_printf("<markup>%s</markup>", text);
+    GMarkupParser parser = {0};
+    GMarkupParseContext *ctx = g_markup_parse_context_new(&parser, 0, NULL, NULL);
+    gboolean valid = g_markup_parse_context_parse(ctx, wrapped, -1, NULL) &&
+                     g_markup_parse_context_end_parse(ctx, NULL);
+    g_markup_parse_context_free(ctx);
+    g_free(wrapped);
+    return valid;
+}
+
+static gboolean on_notification_entered(GtkWidget *widget, GdkEventCrossing *event, gpointer user_data) {
+    guint32 id = GPOINTER_TO_UINT(user_data);
+    notify_pause_timeout(id);
+    return FALSE;
+}
+
+static gboolean on_notification_left(GtkWidget *widget, GdkEventCrossing *event, gpointer user_data) {
+    guint32 id = GPOINTER_TO_UINT(user_data);
+    notify_resume_timeout(id);
+    return FALSE;
+}
+
+static gboolean on_activate_link(GtkLabel *label, const gchar *uri, gpointer user_data) {
+    g_app_info_launch_default_for_uri(uri, NULL, NULL);
+    return TRUE; // Handle the signal manually to prevent GTK Wayland crash
+}
 
 // --- إعدادات التصميم الأساسية ---
 #define NOTIFY_WIDTH 340
@@ -163,6 +193,7 @@ void notify_ui_setup_window(VenomNotification *notification,
                             const char *icon,
                             GVariant *actions,
                             gboolean use_layer_shell,
+                            gint value,
                             void (*action_cb)(guint32 id, const char *action_key, gpointer user_data),
                             gpointer user_data) {
     if (!notification) {
@@ -212,13 +243,15 @@ void notify_ui_setup_window(VenomNotification *notification,
 
     // تخطيط العناصر
     GtkWidget *panel_surface = gtk_event_box_new();
-    gtk_widget_add_events(panel_surface, GDK_BUTTON_PRESS_MASK);
+    gtk_widget_add_events(panel_surface, GDK_BUTTON_PRESS_MASK | GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
     ActionData *default_data = g_new0(ActionData, 1);
     default_data->notification_id = notification->id;
     default_data->action_key = g_strdup("default");
     default_data->action_cb = action_cb;
     default_data->user_data = user_data;
     g_signal_connect_data(panel_surface, "button-press-event", G_CALLBACK(on_notification_clicked), default_data, free_action_data, 0);
+    g_signal_connect(panel_surface, "enter-notify-event", G_CALLBACK(on_notification_entered), GUINT_TO_POINTER(notification->id));
+    g_signal_connect(panel_surface, "leave-notify-event", G_CALLBACK(on_notification_left), GUINT_TO_POINTER(notification->id));
 
     GtkWidget *main_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     gtk_widget_set_app_paintable(panel_surface, TRUE);
@@ -267,17 +300,17 @@ void notify_ui_setup_window(VenomNotification *notification,
     GtkWidget *body_lbl = gtk_label_new(NULL);
     notification->body_lbl = body_lbl;
     if (body && strlen(body) > 0) {
-        // تفعيل قراءة وسوم Pango (مثل البولد والروابط) التي ترسلها بعض التطبيقات
-        // التحقق مما إذا كان النص يحتوي على وسوم صالحة
-        GError *error = NULL;
-        if (pango_parse_markup(body, -1, 0, NULL, NULL, NULL, &error)) {
-            // التنسيق سليم، اعرضه مع دعم الخط العريض والروابط
+        if (is_valid_markup(body)) {
             gtk_label_set_markup(GTK_LABEL(body_lbl), body);
         } else {
-            // التنسيق مكسور (يحتوي رموز مثل < أو &)، تراجع واعرضه كنص عادي
-            gtk_label_set_text(GTK_LABEL(body_lbl), body);
-            g_clear_error(&error);
+            gchar *escaped = g_markup_escape_text(body, -1);
+            gtk_label_set_markup(GTK_LABEL(body_lbl), escaped);
+            g_free(escaped);
         }
+        
+        gtk_label_set_track_visited_links(GTK_LABEL(body_lbl), FALSE);
+        g_signal_connect(body_lbl, "activate-link", G_CALLBACK(on_activate_link), NULL);
+
         gtk_label_set_xalign(GTK_LABEL(body_lbl), 0.0);
         gtk_label_set_line_wrap(GTK_LABEL(body_lbl), TRUE);
         gtk_label_set_line_wrap_mode(GTK_LABEL(body_lbl), PANGO_WRAP_WORD_CHAR);
@@ -287,6 +320,17 @@ void notify_ui_setup_window(VenomNotification *notification,
     }
     gtk_style_context_add_class(gtk_widget_get_style_context(body_lbl), "notify-body");
     gtk_box_pack_start(GTK_BOX(vbox), body_lbl, FALSE, FALSE, 0);
+
+    // 2.5 Progress bar (إذا وجد)
+    if (value >= 0) {
+        GtkWidget *progress = gtk_progress_bar_new();
+        notification->progress_bar = progress;
+        gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress), value / 100.0);
+        gtk_box_pack_start(GTK_BOX(vbox), progress, FALSE, FALSE, 4);
+        gtk_widget_show(progress);
+    } else {
+        notification->progress_bar = NULL;
+    }
 
     // 3. الأزرار (Actions)
     if (actions && g_variant_n_children(actions) > 0) {
@@ -326,7 +370,8 @@ void notify_ui_setup_window(VenomNotification *notification,
 void notify_ui_update_content(VenomNotification *notification,
                               const char *summary,
                               const char *body,
-                              const char *icon) {
+                              const char *icon,
+                              gint value) {
     if (!notification) {
         return;
     }
@@ -336,12 +381,12 @@ void notify_ui_update_content(VenomNotification *notification,
 
     if (notification->body_lbl) {
         if (body && strlen(body) > 0) {
-            GError *error = NULL;
-            if (pango_parse_markup(body, -1, 0, NULL, NULL, NULL, &error)) {
+            if (is_valid_markup(body)) {
                 gtk_label_set_markup(GTK_LABEL(notification->body_lbl), body);
             } else {
-                gtk_label_set_text(GTK_LABEL(notification->body_lbl), body);
-                g_clear_error(&error);
+                gchar *escaped = g_markup_escape_text(body, -1);
+                gtk_label_set_markup(GTK_LABEL(notification->body_lbl), escaped);
+                g_free(escaped);
             }
             gtk_widget_show(notification->body_lbl);
         } else {
