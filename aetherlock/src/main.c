@@ -20,6 +20,7 @@
 #include <wayland-cursor.h>
 #include <wordexp.h>
 #include <glib.h>
+#include <gio/gdesktopappinfo.h>
 #include "background-image.h"
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include "cairo.h"
@@ -1271,6 +1272,19 @@ static void marquee_tick(void *data) {
 	loop_add_timer(s->eventloop, 50, marquee_tick, s);
 }
 
+static gchar *get_icon_from_desktop_file(const gchar *desktop_entry) {
+	if (!desktop_entry) return NULL;
+	gchar *desktop_filename = g_strdup_printf("%s.desktop", desktop_entry);
+	GDesktopAppInfo *app_info = g_desktop_app_info_new(desktop_filename);
+	gchar *icon_str = NULL;
+	if (app_info) {
+		icon_str = g_desktop_app_info_get_string(app_info, "Icon");
+		g_object_unref(app_info);
+	}
+	g_free(desktop_filename);
+	return icon_str;
+}
+
 static gchar *resolve_icon_path(const gchar *icon_name) {
 	if (!icon_name || strlen(icon_name) == 0) return NULL;
 	
@@ -1349,7 +1363,15 @@ static void on_notifications_updated(GList *history, gpointer user_data) {
 		state->latest_notif_body = g_strdup(n->body);
 		
 		if (n->icon_path) {
-			gchar *resolved_path = resolve_icon_path(n->icon_path);
+			gchar *icon_to_resolve = n->icon_path;
+			gchar *desktop_icon = get_icon_from_desktop_file(n->desktop_entry);
+			if (desktop_icon) {
+				icon_to_resolve = desktop_icon;
+			}
+
+			gchar *resolved_path = resolve_icon_path(icon_to_resolve);
+			if (desktop_icon) g_free(desktop_icon);
+
 			if (resolved_path) {
 				GError *err = NULL;
 				GdkPixbuf *pix = gdk_pixbuf_new_from_file_at_scale(resolved_path, 48, 48, TRUE, &err);

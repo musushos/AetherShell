@@ -38,6 +38,7 @@ pangocairo = dependency('pangocairo')
 gdk_pixbuf = dependency('gdk-pixbuf-2.0', required: get_option('gdk-pixbuf'))
 glib = dependency('glib-2.0')
 gio = dependency('gio-2.0')
+gio_unix = dependency('gio-unix-2.0')
 libpam = cc.find_library('pam', required: get_option('pam'))
 crypt = cc.find_library('crypt', required: not libpam.found())
 math = cc.find_library('m')
@@ -100,6 +101,7 @@ dependencies = [
 	wayland_cursor,
 	glib,
 	gio,
+	gio_unix,
 ]
 
 sources = [

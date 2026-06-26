@@ -7,6 +7,7 @@
 typedef struct {
     guint32 id;
     char *app_name;
+    char *desktop_entry;
     char *icon_path;
     char *summary;
     char *body;

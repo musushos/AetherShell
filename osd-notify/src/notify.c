@@ -1,13 +1,16 @@
+#include <stdlib.h>
+#include <unistd.h>
 #include <gtk/gtk.h>
+#include <gdk/gdkwayland.h>
+#include <gtk-layer-shell.h>
 #include <gio/gio.h>
 #include <gio/gdesktopappinfo.h>
-#include <gtk-layer-shell.h>
-#if defined(GDK_WINDOWING_WAYLAND)
-#include <gdk/gdkwayland.h>
-#endif
-#include <time.h>
+#include "notify.h"
 #include "notify_ui.h"
+#include "osd.h"
 #include "osd_sound.h"
+#include "osd_protocols.h"
+#include <time.h>
 
 #define DEFAULT_TIMEOUT 5000
 #define MAX_HISTORY 50
@@ -165,18 +168,50 @@ static gboolean notify_is_wayland_session(void) {
 #endif
 }
 
+static gboolean is_app_running(GDesktopAppInfo *app_info) {
+    const char *exec = g_app_info_get_executable(G_APP_INFO(app_info));
+    if (!exec) return FALSE;
+    gchar *base = g_path_get_basename(exec);
+    gchar *cmd = g_strdup_printf("pgrep -x '%s'", base);
+    gint exit_status = -1;
+    gboolean running = FALSE;
+    if (g_spawn_command_line_sync(cmd, NULL, NULL, &exit_status, NULL)) {
+        if (WIFEXITED(exit_status) && WEXITSTATUS(exit_status) == 0) {
+            running = TRUE;
+        }
+    }
+    g_free(cmd);
+    g_free(base);
+    return running;
+}
+
 static void launch_app_from_desktop_entry(const char *desktop_entry) {
     if (!desktop_entry || strlen(desktop_entry) == 0) return;
     gchar *desktop_filename = g_strdup_printf("%s.desktop", desktop_entry);
     GDesktopAppInfo *app_info = g_desktop_app_info_new(desktop_filename);
     if (app_info) {
-        GError *err = NULL;
-        g_app_info_launch(G_APP_INFO(app_info), NULL, NULL, &err);
-        if (err) {
-            g_printerr("Failed to launch %s: %s\n", desktop_filename, err->message);
-            g_error_free(err);
+        if (!is_app_running(app_info)) {
+            GError *err = NULL;
+            g_app_info_launch(G_APP_INFO(app_info), NULL, NULL, &err);
+            if (err) {
+                g_printerr("Failed to launch %s: %s\n", desktop_filename, err->message);
+                g_error_free(err);
+            }
+        } else {
+            // التطبيق شغال فعلاً، نوجه الكومبوزيتور يعمل فوكس
+            const char *exec = g_app_info_get_executable(G_APP_INFO(app_info));
+            if (exec) {
+                gchar *base = g_path_get_basename(exec);
+                osd_protocols_focus_app(desktop_entry);
+                g_free(base);
+            } else {
+                osd_protocols_focus_app(desktop_entry);
+            }
         }
         g_object_unref(app_info);
+    } else {
+        // لو مفيش desktop file بس معانا ال entry، نجرب نعمله فوكس
+        osd_protocols_focus_app(desktop_entry);
     }
     g_free(desktop_filename);
 }

@@ -14,5 +14,6 @@ typedef struct {
 
 void osd_protocols_init(const OsdProtocolCallbacks *callbacks);
 void osd_protocols_shutdown(void);
+void osd_protocols_focus_app(const char *app_id);
 
 #endif

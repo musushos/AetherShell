@@ -6,7 +6,13 @@
 #include <wayland-client.h>
 #include "aether-ipc-v1-client-protocol.h"
 #include "aether-ipc-v2-client-protocol.h"
+#include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include <sys/stat.h>
+
+extern struct wl_seat *aether_seat;
+extern struct zwlr_foreign_toplevel_manager_v1 *toplevel_manager;
+extern const struct zwlr_foreign_toplevel_manager_v1_listener toplevel_manager_listener;
+void osd_protocols_focus_toplevel(const char *app_id);
 
 // Wayfire JSON IPC globals
 static gboolean wayfire_socket_warned = FALSE;
@@ -19,7 +25,7 @@ static guint wayfire_reconnect_id = 0;
 
 // Aether Wayland IPC globals
 static gboolean aether_global_warned = FALSE;
-static struct wl_display *aether_display = NULL;
+struct wl_display *aether_display = NULL;
 static struct wl_registry *aether_registry = NULL;
 static struct aether_ipc_manager_v1 *aether_manager = NULL;
 static struct zaether_ipc_manager_v2 *aether_manager_v2 = NULL;
@@ -438,6 +444,11 @@ static void aether_registry_global(void *data,
             zaether_ipc_output_v2_add_listener(aether_output, &aether_output_v2_listener, NULL);
             aether_output_v2_objects = g_list_append(aether_output_v2_objects, aether_output);
         }
+    } else if (g_strcmp0(interface, "wl_seat") == 0 && !aether_seat) {
+        aether_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+    } else if (g_strcmp0(interface, zwlr_foreign_toplevel_manager_v1_interface.name) == 0 && !toplevel_manager) {
+        toplevel_manager = wl_registry_bind(registry, name, &zwlr_foreign_toplevel_manager_v1_interface, 1);
+        zwlr_foreign_toplevel_manager_v1_add_listener(toplevel_manager, &toplevel_manager_listener, NULL);
     }
 }
 
@@ -613,4 +624,20 @@ void osd_protocols_shutdown(void) {
     }
     disconnect_wayfire_ipc();
     disconnect_aether_ipc();
+}
+
+void osd_protocols_focus_app(const char *app_id) {
+    if (toplevel_manager) {
+        osd_protocols_focus_toplevel(app_id);
+        return;
+    }
+
+    if (!aether_output_v2_objects || !app_id) return;
+    for (GList *l = aether_output_v2_objects; l != NULL; l = l->next) {
+        struct zaether_ipc_output_v2 *out = l->data;
+        zaether_ipc_output_v2_dispatch(out, "focusclient", app_id, "", "", "", "");
+    }
+    if (aether_display) {
+        wl_display_flush(aether_display);
+    }
 }
