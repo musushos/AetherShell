@@ -142,6 +142,7 @@ struct aetherlock_state {
 	char *latest_notif_summary;
 	char *latest_notif_body;
 	cairo_surface_t *latest_notif_icon;
+	gint latest_notif_value;
 	gboolean notifications_dnd;
 	
 	struct vaxp_colors vaxp_colors;

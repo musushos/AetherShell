@@ -1355,12 +1355,14 @@ static void on_notifications_updated(GList *history, gpointer user_data) {
 	state->latest_notif_summary = NULL;
 	state->latest_notif_body = NULL;
 	state->latest_notif_icon = NULL;
+	state->latest_notif_value = -1;
 
 	if (history != NULL) {
 		NotificationData *n = history->data;
 		state->latest_notif_app = g_strdup(n->app_name);
 		state->latest_notif_summary = g_strdup(n->summary);
 		state->latest_notif_body = g_strdup(n->body);
+		state->latest_notif_value = n->value;
 		
 		if (n->icon_path) {
 			gchar *icon_to_resolve = n->icon_path;

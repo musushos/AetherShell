@@ -40,12 +40,13 @@ static void fetch_history(void) {
         GList *history_list = NULL;
         GVariantIter *iter;
         GVariant *child = g_variant_get_child_value(res, 0);
-        g_variant_get(child, "a(usssss)", &iter);
+        g_variant_get(child, "a(usssssi)", &iter);
         
         guint32 id;
         gchar *app, *icon, *summary, *body, *desktop_entry;
+        gint value;
         
-        while (g_variant_iter_next(iter, "(usssss)", &id, &app, &icon, &summary, &body, &desktop_entry)) {
+        while (g_variant_iter_next(iter, "(usssssi)", &id, &app, &icon, &summary, &body, &desktop_entry, &value)) {
             NotificationData *n = g_new0(NotificationData, 1);
             n->id = id;
             n->app_name = g_strdup(app);
@@ -53,6 +54,7 @@ static void fetch_history(void) {
             n->summary = g_strdup(summary);
             n->body = g_strdup(body);
             n->desktop_entry = g_strdup(desktop_entry);
+            n->value = value;
             history_list = g_list_append(history_list, n);
             
             g_free(app);

@@ -11,6 +11,7 @@ typedef struct {
     char *summary;
     char *body;
     char *desktop_entry;
+    gint value;
 } NotificationData;
 
 typedef void (*NotificationsUpdatedCallback)(GList *history, gpointer user_data);

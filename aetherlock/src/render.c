@@ -133,9 +133,13 @@ static double draw_text_centered(cairo_t *cr, const char *text,
 	return ext.width;
 }
 
-static void draw_text_pango(cairo_t *cr, const char *text, const char *font_family, double font_size, bool bold, double cx, double cy, double max_width) {
-	PangoLayout *layout = pango_cairo_create_layout(cr);
-	pango_layout_set_text(layout, text, -1);
+static void draw_text_pango(cairo_t *cr, const char *text, const char *font_family, double font_size, bool bold, bool use_markup, double cx, double cy, double max_width) {
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    if (use_markup) {
+        pango_layout_set_markup(layout, text, -1);
+    } else {
+        pango_layout_set_text(layout, text, -1);
+    }
 	
 	PangoFontDescription *desc = pango_font_description_from_string(font_family);
 	pango_font_description_set_absolute_size(desc, font_size * PANGO_SCALE);
@@ -154,10 +158,7 @@ static void draw_text_pango(cairo_t *cr, const char *text, const char *font_fami
 	int w, h;
 	pango_layout_get_pixel_size(layout, &w, &h);
 
-	// Pango uses top-left origin, cy is usually bottom/baseline for cairo.
-	// We'll treat cy as the baseline if we were using cairo, so offset by an estimated baseline.
-	// But actually, just center it vertically around cy-h/2 for visual consistency with other elements
-	cairo_move_to(cr, cx - w / 2.0, cy - h / 1.5); // Adjusting cy to approximate baseline
+	cairo_move_to(cr, cx - w / 2.0, cy - h / 1.5);
 	pango_cairo_update_layout(cr, layout);
 	pango_cairo_show_layout(cr, layout);
 	g_object_unref(layout);
@@ -492,7 +493,7 @@ static bool render_frame(struct aetherlock_surface *surface) {
 		g_object_unref(layout_title);
 	
 	set_color(cr, state->vaxp_colors.text_dim);
-	draw_text_pango(cr, state->mpris_artist ? state->mpris_artist : "", state->args.font, 13.0, false, text_cx, cy + 85, max_text_w);
+	draw_text_pango(cr, state->mpris_artist ? state->mpris_artist : "", state->args.font, 13.0, false, false, text_cx, cy + 85, max_text_w);
 
 	// Now Playing Card Controls
 	set_color(cr, state->vaxp_colors.panel_border);
@@ -717,13 +718,30 @@ static bool render_frame(struct aetherlock_surface *surface) {
 
 		set_color(cr, state->vaxp_colors.text_bright);
 		if (state->vaxp_colors.hide_notification_content) {
-			draw_text_pango(cr, "****************", state->args.font, 16.0, true, text_cx, cy + 60, max_text_w);
-			set_color(cr, state->vaxp_colors.text_dim);
-			draw_text_pango(cr, "****************", state->args.font, 13.0, false, text_cx, cy + 85, max_text_w);
+			draw_text_pango(cr, "****************", state->args.font, 16.0, true, false, text_cx, cy + 60, max_text_w);
+			draw_text_pango(cr, "****************", state->args.font, 13.0, false, false, text_cx, cy + 85, max_text_w);
 		} else {
-			draw_text_pango(cr, state->latest_notif_summary, state->args.font, 16.0, true, text_cx, cy + 60, max_text_w);
-			set_color(cr, state->vaxp_colors.text_dim);
-			draw_text_pango(cr, state->latest_notif_body ? state->latest_notif_body : "", state->args.font, 13.0, false, text_cx, cy + 85, max_text_w);
+			draw_text_pango(cr, state->latest_notif_summary, state->args.font, 16.0, true, false, text_cx, cy + 60, max_text_w);
+			draw_text_pango(cr, state->latest_notif_body ? state->latest_notif_body : "", state->args.font, 13.0, false, true, text_cx, cy + 85, max_text_w);
+            
+            if (state->latest_notif_value >= 0) {
+                double bar_w = max_text_w;
+                double bar_h = 4.0;
+                double bar_x = cx3 + COL_W/2 - bar_w/2;
+                if (state->latest_notif_icon) bar_x += 20; // Offset if icon exists
+                double bar_y = cy + 110;
+                
+                // Background
+                cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.2);
+                rounded_rect(cr, bar_x, bar_y, bar_w, bar_h, 2.0);
+                cairo_fill(cr);
+                
+                // Foreground
+                double progress_w = bar_w * (state->latest_notif_value / 100.0);
+                cairo_set_source_rgba(cr, state->vaxp_colors.accent.r, state->vaxp_colors.accent.g, state->vaxp_colors.accent.b, 1.0);
+                rounded_rect(cr, bar_x, bar_y, progress_w, bar_h, 2.0);
+                cairo_fill(cr);
+            }
 		}
 	} else {
 		cairo_set_font_size(cr, 14.0);
