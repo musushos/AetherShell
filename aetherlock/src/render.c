@@ -233,6 +233,72 @@ static void draw_progress_ring(cairo_t *cr, double cx, double cy, double r, doub
     }
 }
 
+static void draw_power_icon(cairo_t *cr, double x, double y, double r) {
+	double r_icon = r * 0.4;
+	cairo_set_line_width(cr, 2.5);
+	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+	cairo_arc(cr, x, y, r_icon, -M_PI * 0.35, M_PI * 1.35);
+	cairo_stroke(cr);
+	cairo_move_to(cr, x, y - r_icon * 0.2);
+	cairo_line_to(cr, x, y - r_icon * 1.2);
+	cairo_stroke(cr);
+}
+
+static void draw_restart_icon(cairo_t *cr, double x, double y, double r) {
+	double r_icon = r * 0.4;
+	cairo_set_line_width(cr, 2.5);
+	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+	cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+	
+	cairo_arc(cr, x, y, r_icon, -M_PI * 0.35, M_PI * 1.15);
+	cairo_stroke(cr);
+	
+	double ax = x + cos(-M_PI * 0.35) * r_icon;
+	double ay = y + sin(-M_PI * 0.35) * r_icon;
+	
+	cairo_move_to(cr, ax - 5, ay - 1);
+	cairo_line_to(cr, ax, ay);
+	cairo_line_to(cr, ax - 1, ay + 5);
+	cairo_stroke(cr);
+}
+
+static void draw_z(cairo_t *cr, double zx, double zy, double size) {
+	cairo_move_to(cr, zx - size/2, zy - size/2);
+	cairo_line_to(cr, zx + size/2, zy - size/2);
+	cairo_line_to(cr, zx - size/2, zy + size/2);
+	cairo_line_to(cr, zx + size/2, zy + size/2);
+	cairo_stroke(cr);
+}
+
+static void draw_sleep_icon(cairo_t *cr, double x, double y, double r) {
+	double r_icon = r * 0.50;
+	
+	cairo_save(cr);
+	// Create the main moon body
+	cairo_arc(cr, x - r_icon*0.2, y + r_icon*0.2, r_icon, 0, 2 * M_PI);
+	cairo_clip(cr);
+	
+	// Create a mask to cut out the inner part
+	cairo_new_path(cr);
+	cairo_rectangle(cr, x - r*2, y - r*2, r*4, r*4);
+	cairo_arc(cr, x + r_icon*0.3, y - r_icon*0.2, r_icon * 1.1, 0, 2 * M_PI);
+	cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
+	cairo_clip(cr);
+	
+	// Fill the resulting crescent shape
+	cairo_paint(cr);
+	cairo_restore(cr);
+	
+	// Three Zs
+	cairo_set_line_width(cr, 1.5);
+	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+	cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+	
+	draw_z(cr, x - r_icon*0.1, y - r_icon*0.4, 2.5);
+	draw_z(cr, x + r_icon*0.4, y - r_icon*0.9, 3.5);
+	draw_z(cr, x + r_icon*0.9, y - r_icon*1.5, 5.0);
+}
+
 /* ── New Layout Helpers ─────────────────────────────────────────────────── */
 
 static void draw_card_bg(cairo_t *cr, struct aetherlock_state *state, double x, double y, double w, double h) {
@@ -645,6 +711,31 @@ static bool render_frame(struct aetherlock_surface *surface) {
 	cairo_line_to(cr, pw_x + PW_W - 27, pw_y + PW_H/2 + 4);
 	set_color(cr, state->vaxp_colors.text_dim);
 	cairo_stroke(cr);
+
+	// Power Actions
+	double pwr_cy = pw_y + PW_H + 45.0;
+	double btn_r = 20.0;
+
+	// Sleep
+	cairo_arc(cr, mid_x - 70, pwr_cy, btn_r, 0, 2*M_PI);
+	set_color(cr, state->vaxp_colors.panel_border);
+	cairo_fill(cr);
+	set_color(cr, state->vaxp_colors.text_dim);
+	draw_sleep_icon(cr, mid_x - 70, pwr_cy, btn_r);
+
+	// Restart
+	cairo_arc(cr, mid_x, pwr_cy, btn_r, 0, 2*M_PI);
+	set_color(cr, state->vaxp_colors.panel_border);
+	cairo_fill(cr);
+	set_color(cr, state->vaxp_colors.text_dim);
+	draw_restart_icon(cr, mid_x, pwr_cy, btn_r);
+
+	// Shutdown
+	cairo_arc(cr, mid_x + 70, pwr_cy, btn_r, 0, 2*M_PI);
+	cairo_set_source_rgba(cr, 0.8, 0.2, 0.2, 0.2);
+	cairo_fill(cr);
+	cairo_set_source_rgba(cr, 0.9, 0.3, 0.3, 1.0);
+	draw_power_icon(cr, mid_x + 70, pwr_cy, btn_r);
 
 	// ── Column 3: Right ────────────────────────────────────────────
 	double cx3 = cx2 + MID_W + GAP;

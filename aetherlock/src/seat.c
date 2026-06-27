@@ -210,6 +210,27 @@ static void wl_pointer_button(void *data, struct wl_pointer *wl_pointer,
 					else if (i == 2) mpris_control_next();
 				}
 			}
+
+			// Power buttons
+			const double MID_W = 440.0;
+			const double GAP = 24.0;
+			
+			double cx2 = cx1 + COL_W + GAP;
+			double mid_x = cx2 + MID_W / 2.0;
+			double pw_y = PAD + 395.0;
+			double pwr_cy = pw_y + 48.0 + 45.0;
+			double pwr_r = 20.0;
+
+			double pwr_btns[3] = { mid_x - 70, mid_x, mid_x + 70 };
+			for (int i = 0; i < 3; i++) {
+				double dx = px - pwr_btns[i];
+				double dy = py - pwr_cy;
+				if (dx*dx + dy*dy <= pwr_r*pwr_r) {
+					if (i == 0) vaxp_sleep();
+					else if (i == 1) vaxp_reboot();
+					else if (i == 2) vaxp_power_off();
+				}
+			}
 		}
 	}
 }

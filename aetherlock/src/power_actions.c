@@ -26,9 +26,7 @@ void vaxp_reboot(void) {
     g_object_unref(bus);
 }
 
-void vaxp_logout(void) {
-    system("dm-tool switch-to-greeter");
-}
+
 
 void vaxp_sleep(void) {
     GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, NULL);
