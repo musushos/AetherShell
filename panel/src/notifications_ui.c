@@ -3,6 +3,7 @@
 #include "vaxp_notifications.h"
 #include "resource_paths.h"
 #include "notifications_ui.h"
+#include "notifications_indicator.h"
 #include "window_backend.h"
 
 static gboolean is_valid_markup(const gchar *text) {
@@ -49,6 +50,9 @@ static gboolean on_history_card_clicked(GtkWidget *widget, GdkEventButton *event
 }
 
 static void on_notifications_updated(GList *history, gpointer user_data) {
+    /* Push count to the panel indicator so it redraws */
+    notifications_indicator_set_count((guint)g_list_length(history));
+
     GList *children, *iter;
     children = gtk_container_get_children(GTK_CONTAINER(notifications_box));
     for (iter = children; iter != NULL; iter = g_list_next(iter)) {

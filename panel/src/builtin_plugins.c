@@ -28,6 +28,7 @@
 #include "keyboard_layout.h"
 #include "mic_indicator.h"
 #include "notifications_ui.h"
+#include "notifications_indicator.h"
 #include "resource_paths.h"
 #include "sidebar_popup.h"
 #include "sni_tray.h"
@@ -431,26 +432,21 @@ static AetherPanelPluginAPIv3 _api_search = {
 };
 
 /* =========================================================================
- * 12. Notifications button
+ * 12. Notifications indicator (custom Cairo widget)
  * ========================================================================= */
 static GtkWidget *_wrap_notifs(AetherPanelContext *ctx)
 {
     (void)ctx;
 
+    /* Popup window (the full notifications panel) */
     GtkWidget *notif_w = init_notifications_ui();
 
-    GtkWidget *btn = gtk_button_new();
-    gtk_button_set_relief(GTK_BUTTON(btn), GTK_RELIEF_NONE);
-    gtk_widget_set_tooltip_text(btn, "Notifications");
+    /* Custom-drawn indicator button — mirrors battery_indicator pattern */
+    GtkWidget *indicator = create_notifications_indicator_widget(notif_w);
 
-    GtkWidget *icon = gtk_image_new_from_icon_name(
-        "preferences-system-notifications-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_container_add(GTK_CONTAINER(btn), icon);
+    notifications_ui_set_relative_to(notif_w, indicator);
 
-    notifications_ui_set_relative_to(notif_w, btn);
-
-    g_signal_connect(btn, "clicked", G_CALLBACK(_on_notifs_clicked), notif_w);
-    return btn;
+    return indicator;
 }
 
 static AetherPanelPluginAPIv3 _api_notifs = {

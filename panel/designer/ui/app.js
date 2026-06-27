@@ -793,6 +793,13 @@ function defaultWinStyle(pluginId) {
     borderAlpha:   10,
     radius:        14,
     width:         320,
+    /* Notifications indicator badge colours (only meaningful for aether-notifs) */
+    badgeBgColor:  pluginId === 'aether-notifs' ? '#ce93d8' : '#ce93d8',
+    badgeBgAlpha:  100,
+    badgeFgColor:  pluginId === 'aether-notifs' ? '#1a0028' : '#1a0028',
+    badgeFgAlpha:  100,
+    bellColor:     '#cccccc',
+    bellAlpha:     100,
   };
 }
 
@@ -827,6 +834,25 @@ function loadWinControls(key) {
   sv('win-border-color',   s.borderColor);   st('win-border-alpha-val',  s.borderAlpha + '%');  sv('win-border-alpha',  s.borderAlpha);
   sv('win-radius',         s.radius);        st('win-radius-val',        s.radius + 'px');
   sv('win-width',          s.width);         st('win-width-val',         s.width + 'px');
+
+  /* Show / hide the indicator badge section only for aether-notifs */
+  const indicatorSection = document.getElementById('notif-indicator-section');
+  if (indicatorSection) {
+    if (key === 'aether-notifs') {
+      indicatorSection.classList.remove('hidden');
+      sv('notif-badge-bg-color', s.badgeBgColor || '#ce93d8');
+      sv('notif-badge-bg-alpha', s.badgeBgAlpha !== undefined ? s.badgeBgAlpha : 100);
+      st('notif-badge-bg-alpha-val', (s.badgeBgAlpha !== undefined ? s.badgeBgAlpha : 100) + '%');
+      sv('notif-badge-fg-color', s.badgeFgColor || '#1a0028');
+      sv('notif-badge-fg-alpha', s.badgeFgAlpha !== undefined ? s.badgeFgAlpha : 100);
+      st('notif-badge-fg-alpha-val', (s.badgeFgAlpha !== undefined ? s.badgeFgAlpha : 100) + '%');
+      sv('notif-bell-color',     s.bellColor    || '#cccccc');
+      sv('notif-bell-alpha',     s.bellAlpha    !== undefined ? s.bellAlpha    : 100);
+      st('notif-bell-alpha-val', (s.bellAlpha   !== undefined ? s.bellAlpha    : 100) + '%');
+    } else {
+      indicatorSection.classList.add('hidden');
+    }
+  }
 }
 
 /*
@@ -883,6 +909,18 @@ function generateWindowCSS() {
       `${winSel} .active-cyan-text { color: ${accent}; }`,
       ''
     );
+
+    /* Notifications indicator — named colours read by gtk_style_context_lookup_color() */
+    if (pluginId === 'aether-notifs') {
+      lines.push(
+        `/* Notifications indicator badge — Cairo named colours */`,
+        `@define-color notif_badge_bg ${rgba(s.badgeBgColor || '#ce93d8', s.badgeBgAlpha !== undefined ? s.badgeBgAlpha : 100)};`,
+        `@define-color notif_badge_fg ${rgba(s.badgeFgColor || '#1a0028', s.badgeFgAlpha !== undefined ? s.badgeFgAlpha : 100)};`,
+        `@define-color notif_bell_color ${rgba(s.bellColor || '#cccccc', s.bellAlpha !== undefined ? s.bellAlpha : 100)};`,
+        `@define-color notif_dot_color rgba(89, 89, 89, 0.6);`,
+        ''
+      );
+    }
   }
   return lines.join('\n');
 }
@@ -962,6 +1000,37 @@ function wireWindowControls() {
     sendToC({ action: 'apply_css', css: allCSS });
     toast('Window style applied live ✓', 'success');
   });
+
+  /* ── Notifications indicator badge colour controls ─────────────────── */
+  const notifBadgeControls = [
+    ['notif-badge-bg-alpha', 'notif-badge-bg-alpha-val', '%', 'badgeBgAlpha'],
+    ['notif-badge-fg-alpha', 'notif-badge-fg-alpha-val', '%', 'badgeFgAlpha'],
+    ['notif-bell-alpha',     'notif-bell-alpha-val',     '%', 'bellAlpha'],
+  ];
+  for (const [id, valId, unit, prop] of notifBadgeControls) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', function() {
+      document.getElementById(valId).textContent = this.value + unit;
+      if (!state.winStyles['aether-notifs']) state.winStyles['aether-notifs'] = defaultWinStyle('aether-notifs');
+      state.winStyles['aether-notifs'][prop] = Number(this.value);
+      markDirty();
+    });
+  }
+  const notifBadgeColors = [
+    ['notif-badge-bg-color', 'badgeBgColor'],
+    ['notif-badge-fg-color', 'badgeFgColor'],
+    ['notif-bell-color',     'bellColor'],
+  ];
+  for (const [id, prop] of notifBadgeColors) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', function() {
+      if (!state.winStyles['aether-notifs']) state.winStyles['aether-notifs'] = defaultWinStyle('aether-notifs');
+      state.winStyles['aether-notifs'][prop] = this.value;
+      markDirty();
+    });
+  }
 }
 
 /* Extend generateCSS to include window styles */
