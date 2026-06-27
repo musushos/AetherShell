@@ -754,6 +754,7 @@ const WIN_CSS_MAP = {
   'aether-cc':      { windowId: 'control-center-popover',   outerId: 'main-box' },
   'aether-appmenu': { windowId: 'app-menu-popover',         outerId: 'app-menu-box' },
   'aether-clock':   { windowId: 'sidebar',                  outerId: null },
+  'aether-workspaces': { windowId: 'WORKSPACES_PSEUDO_WINDOW', outerId: null },
 };
 
 /* Per-window style state — keyed by plugin id (e.g. 'aether-volume') */
@@ -800,6 +801,17 @@ function defaultWinStyle(pluginId) {
     badgeFgAlpha:  100,
     bellColor:     '#cccccc',
     bellAlpha:     100,
+    /* Workspaces specific styling */
+    wsDotW:        10,
+    wsDotH:        10,
+    wsPillW:       30,
+    wsMargin:      2,
+    wsBorderRadius: 5,
+    wsContainerRadius: 14,
+    wsContainerBg: '#000000',
+    wsContainerAlpha: 30,
+    wsActiveColor: '#7c3aed',
+    wsInactiveColor: '#ffffff',
   };
 }
 
@@ -837,20 +849,57 @@ function loadWinControls(key) {
 
   /* Show / hide the indicator badge section only for aether-notifs */
   const indicatorSection = document.getElementById('notif-indicator-section');
-  if (indicatorSection) {
-    if (key === 'aether-notifs') {
-      indicatorSection.classList.remove('hidden');
-      sv('notif-badge-bg-color', s.badgeBgColor || '#ce93d8');
-      sv('notif-badge-bg-alpha', s.badgeBgAlpha !== undefined ? s.badgeBgAlpha : 100);
-      st('notif-badge-bg-alpha-val', (s.badgeBgAlpha !== undefined ? s.badgeBgAlpha : 100) + '%');
-      sv('notif-badge-fg-color', s.badgeFgColor || '#1a0028');
-      sv('notif-badge-fg-alpha', s.badgeFgAlpha !== undefined ? s.badgeFgAlpha : 100);
-      st('notif-badge-fg-alpha-val', (s.badgeFgAlpha !== undefined ? s.badgeFgAlpha : 100) + '%');
-      sv('notif-bell-color',     s.bellColor    || '#cccccc');
-      sv('notif-bell-alpha',     s.bellAlpha    !== undefined ? s.bellAlpha    : 100);
-      st('notif-bell-alpha-val', (s.bellAlpha   !== undefined ? s.bellAlpha    : 100) + '%');
-    } else {
-      indicatorSection.classList.add('hidden');
+  const wsSection = document.getElementById('ws-indicator-section');
+  
+  /* Hide standard window props for workspaces because it's not a popup */
+  const standardProps = Array.from(document.getElementById('win-props').children).filter(
+    el => el.id !== 'notif-indicator-section' && el.id !== 'ws-indicator-section' && el.tagName !== 'BUTTON'
+  );
+
+  if (key === 'aether-workspaces') {
+    standardProps.forEach(el => el.classList.add('hidden'));
+    if (indicatorSection) indicatorSection.classList.add('hidden');
+    if (wsSection) {
+      wsSection.classList.remove('hidden');
+      sv('ws-active-color',   s.wsActiveColor || '#7c3aed');
+      sv('ws-inactive-color', s.wsInactiveColor || '#ffffff');
+      sv('ws-container-bg',   s.wsContainerBg || '#000000');
+      sv('ws-container-alpha', s.wsContainerAlpha !== undefined ? s.wsContainerAlpha : 30);
+      st('ws-container-alpha-val', (s.wsContainerAlpha !== undefined ? s.wsContainerAlpha : 30) + '%');
+      sv('ws-dot-w',          s.wsDotW || 10);
+      st('ws-dot-w-val',      (s.wsDotW || 10) + 'px');
+      sv('ws-dot-h',          s.wsDotH || 10);
+      st('ws-dot-h-val',      (s.wsDotH || 10) + 'px');
+      sv('ws-pill-w',         s.wsPillW || 30);
+      st('ws-pill-w-val',     (s.wsPillW || 30) + 'px');
+      sv('ws-margin',         s.wsMargin !== undefined ? s.wsMargin : 2);
+      st('ws-margin-val',     (s.wsMargin !== undefined ? s.wsMargin : 2) + 'px');
+      sv('ws-border-radius',  s.wsBorderRadius !== undefined ? s.wsBorderRadius : 5);
+      st('ws-border-radius-val', (s.wsBorderRadius !== undefined ? s.wsBorderRadius : 5) + 'px');
+      sv('ws-container-radius', s.wsContainerRadius !== undefined ? s.wsContainerRadius : 14);
+      st('ws-container-radius-val', (s.wsContainerRadius !== undefined ? s.wsContainerRadius : 14) + 'px');
+    }
+    
+    if (hint) hint.textContent = '.workspace-dot';
+  } else {
+    standardProps.forEach(el => el.classList.remove('hidden'));
+    if (wsSection) wsSection.classList.add('hidden');
+    
+    if (indicatorSection) {
+      if (key === 'aether-notifs') {
+        indicatorSection.classList.remove('hidden');
+        sv('notif-badge-bg-color', s.badgeBgColor || '#ce93d8');
+        sv('notif-badge-bg-alpha', s.badgeBgAlpha !== undefined ? s.badgeBgAlpha : 100);
+        st('notif-badge-bg-alpha-val', (s.badgeBgAlpha !== undefined ? s.badgeBgAlpha : 100) + '%');
+        sv('notif-badge-fg-color', s.badgeFgColor || '#1a0028');
+        sv('notif-badge-fg-alpha', s.badgeFgAlpha !== undefined ? s.badgeFgAlpha : 100);
+        st('notif-badge-fg-alpha-val', (s.badgeFgAlpha !== undefined ? s.badgeFgAlpha : 100) + '%');
+        sv('notif-bell-color',     s.bellColor    || '#cccccc');
+        sv('notif-bell-alpha',     s.bellAlpha    !== undefined ? s.bellAlpha    : 100);
+        st('notif-bell-alpha-val', (s.bellAlpha   !== undefined ? s.bellAlpha    : 100) + '%');
+      } else {
+        indicatorSection.classList.add('hidden');
+      }
     }
   }
 }
@@ -884,15 +933,28 @@ function generateWindowCSS() {
     const winSel   = `#${win}`;
 
     const bg      = rgba(s.bgColor,      s.bgAlpha);
+    const border  = s.borderOn
+      ? `1px solid ${rgba(s.borderColor, s.borderAlpha)}`
+      : 'none';
+
+    /* Workspaces specific CSS (bypass standard popup CSS) */
+    if (pluginId === 'aether-workspaces') {
+      lines.push(
+        `/* Workspaces — pure CSS styling (targets classes globally) */`,
+        `.workspace-container { background-color: ${rgba(s.wsContainerBg || '#000000', s.wsContainerAlpha !== undefined ? s.wsContainerAlpha : 30)}; border-radius: ${s.wsContainerRadius !== undefined ? s.wsContainerRadius : 14}px; }`,
+        `.workspace-dot { background-color: ${s.wsInactiveColor || '#ffffff'}; min-width: ${s.wsDotW || 10}px; min-height: ${s.wsDotH || 10}px; border-radius: ${s.wsBorderRadius !== undefined ? s.wsBorderRadius : 5}px; margin: 0 ${s.wsMargin !== undefined ? s.wsMargin : 2}px; }`,
+        `.workspace-dot-active { background-color: ${s.wsActiveColor || '#7c3aed'}; min-width: ${s.wsPillW || 30}px; border-radius: ${s.wsBorderRadius !== undefined ? s.wsBorderRadius : 5}px; }`,
+        ''
+      );
+      continue;
+    }
+
     const surface = rgba(s.surfaceColor, s.surfaceAlpha);
     const element = rgba(s.elementColor, s.elementAlpha);
     const text    = rgba(s.textColor,    s.textAlpha);
     const text2   = rgba(s.text2Color,   s.text2Alpha);
     const icon    = rgba(s.iconColor,    s.iconAlpha);
     const accent  = rgba(s.accentColor,  s.accentAlpha);
-    const border  = s.borderOn
-      ? `1px solid ${rgba(s.borderColor, s.borderAlpha)}`
-      : 'none';
 
     lines.push(
       `/* ${pluginId} — scoped under #${win} */`,
@@ -1028,6 +1090,41 @@ function wireWindowControls() {
     el.addEventListener('input', function() {
       if (!state.winStyles['aether-notifs']) state.winStyles['aether-notifs'] = defaultWinStyle('aether-notifs');
       state.winStyles['aether-notifs'][prop] = this.value;
+      markDirty();
+    });
+  }
+
+  /* ── Workspaces indicator controls ─────────────────── */
+  const wsSliders = [
+    ['ws-container-alpha', 'ws-container-alpha-val', '%', 'wsContainerAlpha'],
+    ['ws-dot-w',           'ws-dot-w-val',           'px', 'wsDotW'],
+    ['ws-dot-h',           'ws-dot-h-val',           'px', 'wsDotH'],
+    ['ws-pill-w',          'ws-pill-w-val',          'px', 'wsPillW'],
+    ['ws-margin',          'ws-margin-val',          'px', 'wsMargin'],
+    ['ws-border-radius',   'ws-border-radius-val',   'px', 'wsBorderRadius'],
+    ['ws-container-radius','ws-container-radius-val','px', 'wsContainerRadius'],
+  ];
+  for (const [id, valId, unit, prop] of wsSliders) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', function() {
+      document.getElementById(valId).textContent = this.value + unit;
+      if (!state.winStyles['aether-workspaces']) state.winStyles['aether-workspaces'] = defaultWinStyle('aether-workspaces');
+      state.winStyles['aether-workspaces'][prop] = Number(this.value);
+      markDirty();
+    });
+  }
+  const wsColors = [
+    ['ws-active-color',   'wsActiveColor'],
+    ['ws-inactive-color', 'wsInactiveColor'],
+    ['ws-container-bg',   'wsContainerBg'],
+  ];
+  for (const [id, prop] of wsColors) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input', function() {
+      if (!state.winStyles['aether-workspaces']) state.winStyles['aether-workspaces'] = defaultWinStyle('aether-workspaces');
+      state.winStyles['aether-workspaces'][prop] = this.value;
       markDirty();
     });
   }
