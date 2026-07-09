@@ -28,24 +28,24 @@ LIBS    = $(shell pkg-config --libs $(PKGS)) -lX11 -lXext -lm -ldl
 # ── Sources ────────────────────────────────────────────────────────────────── #
 # Core engine (new files)
 ENGINE_SRC = src/plugin_engine.c \
-             src/css_provider.c \
-             src/layout_builder.c \
+             src/ui/css_provider.c \
+             src/ui/layout_builder.c \
              src/builtin_plugins.c
 
-# Existing panel components (unchanged)
-COMPONENT_SRC = src/control_center_ui.c src/app_menu.c \
-                src/battery_indicator.c src/pulse_volume.c src/power_profile.c \
-                src/mpris_control.c src/power_actions.c src/vaxp_notifications.c \
-                src/workspaces.c src/keyboard_layout.c src/sni_tray.c src/resource_paths.c \
-                src/network_actions.c src/brightness_control.c src/volume_indicator.c \
-                src/mic_indicator.c src/wifi_indicator.c src/sidebar.c src/notifications_ui.c \
+# Existing panel components
+COMPONENT_SRC = src/ui/control_center_ui.c src/ui/app_menu.c \
+                src/battery_indicator.c src/logic/pulse_volume.c src/logic/power_profile.c \
+                src/logic/mpris_control.c src/logic/power_actions.c src/logic/vaxp_notifications.c \
+                src/ui/workspaces.c src/ui/keyboard_layout.c src/sni_tray.c src/logic/resource_paths.c \
+                src/logic/network_actions.c src/logic/brightness_control.c src/volume_indicator.c \
+                src/mic_indicator.c src/wifi_indicator.c src/sidebar.c src/ui/notifications_ui.c \
                 src/notifications_indicator.c \
-                src/bluetooth_manager.c src/bt_indicator.c src/window_backend.c \
-                src/compositor_backend.c src/aether-ipc-v1-client-protocol.c \
-                src/aether-ipc-unstable-v2-protocol.c \
-                src/workspaces_xorg.c src/kb_indicator_xorg.c
+                src/bluetooth_manager.c src/bt_indicator.c src/logic/window_backend.c \
+                src/logic/compositor_backend.c src/protocols/aether-ipc-v1-client-protocol.c \
+                src/protocols/aether-ipc-unstable-v2-protocol.c \
+                src/logic/workspaces_xorg.c src/logic/kb_indicator_xorg.c
 
-SRC      = src/panel.c $(ENGINE_SRC) $(COMPONENT_SRC)
+SRC      = src/ui/panel.c $(ENGINE_SRC) $(COMPONENT_SRC)
 INCLUDES = -Iinclude -I.
 
 # ── Build ──────────────────────────────────────────────────────────────────── #
