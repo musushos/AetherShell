@@ -145,7 +145,7 @@ window._aether = {
 
 function defaultLayout() {
   return {
-    panel: { height: 36, spacing: 0, margin: { top: 0, left: 0, right: 0 } },
+    panel: { position: 'top', height: 36, spacing: 0, margin: { top: 0, left: 0, right: 0 } },
     layout: {
       left:   [{ type: 'pill', id: 'menu-pill',       spacing: 0, plugins: ['aether-appmenu','aether-clipboard'] },
                { type: 'pill', id: 'workspaces-pill', spacing: 0, plugins: ['aether-workspaces'] }],
@@ -385,6 +385,13 @@ function wireInspector() {
     }
   });
 
+  /* Panel configuration */
+  document.getElementById('prop-panel-position').addEventListener('change', function() {
+    if (!state.layout.panel) state.layout.panel = {};
+    state.layout.panel.position = this.value;
+    markDirty();
+  });
+
   /* Panel background */
   document.getElementById('prop-panel-color').addEventListener('input', function() {
     state.panelBg.color = this.value;
@@ -405,6 +412,8 @@ function wireInspector() {
 }
 
 function syncPanelBgControls() {
+  const panelPos = state.layout.panel && state.layout.panel.position ? state.layout.panel.position : 'top';
+  document.getElementById('prop-panel-position').value = panelPos;
   document.getElementById('prop-panel-color').value = state.panelBg.color;
   document.getElementById('prop-panel-alpha').value = state.panelBg.alpha;
   document.getElementById('prop-panel-alpha-val').textContent = state.panelBg.alpha + '%';
