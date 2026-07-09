@@ -2,6 +2,7 @@
 #define BLUETOOTH_MANAGER_H
 
 #include <glib.h>
+#include <gio/gio.h>
 
 /* ── BlueZ D-Bus constants ──────────────────────────────────────────────── */
 #define BLUEZ_DBUS_SERVICE      "org.bluez"
@@ -101,5 +102,10 @@ void bluetooth_device_free(BtDevice *dev);
 
 /** TRUE if the adapter is powered on. */
 gboolean bluetooth_is_powered(void);
+
+/* Agent UI Callback Setup */
+typedef void (*BtRequestConfirmationCallback)(const gchar *device_path, guint32 passkey, GDBusMethodInvocation *inv, gpointer user_data);
+
+void bluetooth_set_confirmation_callback(BtRequestConfirmationCallback cb, gpointer user_data);
 
 #endif /* BLUETOOTH_MANAGER_H */

@@ -40,7 +40,7 @@ COMPONENT_SRC = src/ui/control_center_ui.c src/ui/app_menu.c \
                 src/ui/sni_tray.c src/logic/resource_paths.c src/logic/network_actions.c src/logic/brightness_control.c \
                 src/ui/volume_indicator.c src/ui/mic_indicator.c src/ui/wifi_indicator.c src/ui/sidebar.c \
                 src/logic/sidebar_backend.c src/ui/notifications_ui.c src/ui/notifications_indicator.c \
-                src/bluetooth_manager.c src/ui/bt_indicator.c src/logic/window_backend.c \
+                src/logic/bluetooth_manager.c src/ui/bt_indicator.c src/logic/window_backend.c \
                 src/logic/compositor_backend.c src/protocols/aether-ipc-v1-client-protocol.c \
                 src/protocols/aether-ipc-unstable-v2-protocol.c \
                 src/logic/workspaces_xorg.c src/logic/kb_indicator_xorg.c \

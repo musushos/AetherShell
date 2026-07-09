@@ -11,7 +11,6 @@
 
 #include "bluetooth_manager.h"
 #include <gio/gio.h>
-#include <gtk/gtk.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
@@ -306,76 +305,13 @@ static const gchar agent_xml[] =
 
 /* ── Pending confirmation invocation (one at a time) ─── */
 static GDBusMethodInvocation *pending_confirmation = NULL;
+static BtRequestConfirmationCallback ui_confirm_cb = NULL;
+static gpointer ui_confirm_data = NULL;
 
-static void on_confirm_dialog_response(GtkDialog *dialog, gint response, gpointer user_data)
+void bluetooth_set_confirmation_callback(BtRequestConfirmationCallback cb, gpointer user_data)
 {
-    GDBusMethodInvocation *inv = user_data;
-    (void)dialog;
-    if (response == GTK_RESPONSE_ACCEPT) {
-        g_dbus_method_invocation_return_value(inv, g_variant_new("()"));
-    } else {
-        g_dbus_method_invocation_return_dbus_error(
-            inv, "org.bluez.Error.Rejected", "Pairing rejected by user");
-    }
-    gtk_widget_destroy(GTK_WIDGET(dialog));
-    pending_confirmation = NULL;
-}
-
-/* Show the pairing confirmation dialog (runs in GTK main loop) */
-typedef struct { GDBusMethodInvocation *inv; guint32 passkey; gchar *device_path; } ConfirmData;
-
-static gboolean show_confirm_dialog_idle(gpointer user_data)
-{
-    ConfirmData *d = user_data;
-
-    /* If a previous dialog is still up, reject the new one */
-    if (pending_confirmation) {
-        g_dbus_method_invocation_return_dbus_error(
-            d->inv, "org.bluez.Error.Busy", "Another pairing in progress");
-        g_free(d->device_path);
-        g_free(d);
-        return G_SOURCE_REMOVE;
-    }
-
-    pending_confirmation = d->inv;
-
-    /* Build dialog */
-    GtkWidget *dialog = gtk_dialog_new_with_buttons(
-        "Bluetooth Pairing Request",
-        NULL,
-        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
-        "Cancel",  GTK_RESPONSE_REJECT,
-        "Confirm", GTK_RESPONSE_ACCEPT,
-        NULL);
-    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
-
-    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
-    gtk_container_set_border_width(GTK_CONTAINER(content), 16);
-    gtk_box_set_spacing(GTK_BOX(content), 12);
-
-    /* Device path hint */
-    gchar *hint = g_strdup_printf("Device: %s", d->device_path ? d->device_path : "Unknown");
-    GtkWidget *dev_lbl = gtk_label_new(hint);
-    gtk_widget_set_halign(dev_lbl, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(content), dev_lbl, FALSE, FALSE, 0);
-    g_free(hint);
-
-    /* Passkey */
-    gchar *key_txt = g_strdup_printf("Confirm passkey:  <b>%06u</b>", d->passkey);
-    GtkWidget *key_lbl = gtk_label_new(NULL);
-    gtk_label_set_markup(GTK_LABEL(key_lbl), key_txt);
-    gtk_widget_set_halign(key_lbl, GTK_ALIGN_CENTER);
-    gtk_box_pack_start(GTK_BOX(content), key_lbl, FALSE, FALSE, 0);
-    g_free(key_txt);
-
-    gtk_widget_show_all(content);
-    g_signal_connect(dialog, "response",
-                     G_CALLBACK(on_confirm_dialog_response), d->inv);
-    gtk_window_present(GTK_WINDOW(dialog));
-
-    g_free(d->device_path);
-    g_free(d);
-    return G_SOURCE_REMOVE;
+    ui_confirm_cb = cb;
+    ui_confirm_data = user_data;
 }
 
 /* ── Agent method call handler ──────────────────────────── */
@@ -407,20 +343,18 @@ static void agent_method_call(GDBusConnection       *conn,
     } else if (g_strcmp0(method_name, "RequestConfirmation") == 0) {
         /* BlueZ wants us to confirm a numeric passkey */
         gchar   *device = NULL;
+        gchar   *device_path = NULL;
         guint32  passkey = 0;
-        g_variant_get(parameters, "(ou)", &device, &passkey);
+        g_variant_get(parameters, "(ou)", &device_path, &passkey);
 
-        /* Schedule the GTK dialog on the main loop (we may be called from a
-         * GDBus dispatch which can handle a nested loop, but g_idle_add is
-         * cleaner and avoids re-entrancy issues). */
-        ConfirmData *cd   = g_new0(ConfirmData, 1);
-        cd->inv           = invocation;   /* kept alive; we reply later */
-        cd->passkey       = passkey;
-        cd->device_path   = g_strdup(device);
-        g_free(device);
-
-        g_idle_add(show_confirm_dialog_idle, cd);
-        /* Do NOT call return_value here — dialog callback will do it */
+        if (ui_confirm_cb) {
+            ui_confirm_cb(device_path, passkey, invocation, ui_confirm_data);
+        } else {
+            /* If no UI is registered, reject by default to avoid hanging */
+            g_dbus_method_invocation_return_dbus_error(
+                invocation, "org.bluez.Error.Rejected", "No UI registered for pairing");
+        }
+        g_free(device_path);
 
     } else if (g_strcmp0(method_name, "RequestAuthorization") == 0) {
         /* Just authorize unconditionally (user already chose to connect) */

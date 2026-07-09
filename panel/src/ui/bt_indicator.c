@@ -12,6 +12,7 @@
 #include "window_backend.h"
 #include <gtk-layer-shell.h>
 #include <string.h>
+#include <gio/gio.h>
 
 static GtkWidget *bti_btn    = NULL;
 static GtkWidget *bti_icon   = NULL;
@@ -33,6 +34,55 @@ static void update_bt_icon(gboolean powered, gboolean connected)
     else
         icon = "bluetooth-active-symbolic";
     gtk_image_set_from_icon_name(GTK_IMAGE(bti_icon), icon, GTK_ICON_SIZE_MENU);
+}
+
+/* ── Bluetooth Pairing Dialog ────────────────────────────────────────────── */
+
+static void on_confirm_dialog_response(GtkDialog *dialog, gint response, gpointer user_data)
+{
+    GDBusMethodInvocation *inv = user_data;
+    if (response == GTK_RESPONSE_ACCEPT) {
+        g_dbus_method_invocation_return_value(inv, g_variant_new("()"));
+    } else {
+        g_dbus_method_invocation_return_dbus_error(
+            inv, "org.bluez.Error.Rejected", "Pairing rejected by user");
+    }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+static void ui_confirm_cb(const gchar *device_path, guint32 passkey, GDBusMethodInvocation *inv, gpointer user_data)
+{
+    (void)user_data;
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(
+        "Bluetooth Pairing Request",
+        NULL,
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "Cancel",  GTK_RESPONSE_REJECT,
+        "Confirm", GTK_RESPONSE_ACCEPT,
+        NULL);
+    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 16);
+    gtk_box_set_spacing(GTK_BOX(content), 12);
+
+    gchar *hint = g_strdup_printf("Device: %s", device_path ? device_path : "Unknown");
+    GtkWidget *dev_lbl = gtk_label_new(hint);
+    gtk_widget_set_halign(dev_lbl, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(content), dev_lbl, FALSE, FALSE, 0);
+    g_free(hint);
+
+    gchar *key_txt = g_strdup_printf("Confirm passkey:  <b>%06u</b>", passkey);
+    GtkWidget *key_lbl = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(key_lbl), key_txt);
+    gtk_widget_set_halign(key_lbl, GTK_ALIGN_CENTER);
+    gtk_box_pack_start(GTK_BOX(content), key_lbl, FALSE, FALSE, 0);
+    g_free(key_txt);
+
+    gtk_widget_show_all(content);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_confirm_dialog_response), inv);
+    gtk_window_present(GTK_WINDOW(dialog));
 }
 
 /* ── State callback from bluetooth_manager ───────────────────────────────── */
@@ -185,6 +235,7 @@ GtkWidget *create_bt_indicator_widget(void)
         g_signal_connect(bt_popup, "key-press-event", G_CALLBACK(on_bt_popup_key_press), NULL);
 
     /* Init BlueZ — state callback will set the correct icon immediately */
+    bluetooth_set_confirmation_callback(ui_confirm_cb, NULL);
     bluetooth_init(on_bt_state_changed, NULL);
 
     return bti_btn;
