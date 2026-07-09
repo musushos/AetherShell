@@ -2,7 +2,7 @@ project(
 	'aether-recorder',
     'c',
 	'cpp',
-	version: '0.6.0',
+	version: '0.1.0',
 	license: 'MIT',
 	meson_version: '>=0.54.0',
 	default_options: [

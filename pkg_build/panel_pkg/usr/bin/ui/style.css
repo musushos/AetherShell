@@ -9,7 +9,7 @@
   --text:      #e6edf3;
   --text-muted:#8b949e;
   --accent:    #00000042;
-  --accent2:   #ffffff;
+  --accent2:   #ffffffae;
   --green:     #3fb950;
   --red:       #f85149;
   --orange:    #e3b341;
@@ -547,7 +547,7 @@ input[type="range"] {
   border-bottom: 1px solid var(--border);
 }
 
-#win-select {
+#win-select, .panel-select {
   width: 100%;
   margin-top: 6px;
   background: var(--bg);
@@ -557,8 +557,19 @@ input[type="range"] {
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
-#win-select:focus { outline: none; border-color: var(--accent); }
+#win-select:focus, .panel-select:focus { outline: none; border-color: var(--accent); }
+
+/* Add a custom dropdown arrow since we removed the native one */
+#win-select, .panel-select {
+  background-image: url("data:image/svg+xml;utf8,<svg fill='%238b949e' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
+  background-repeat: no-repeat;
+  background-position-x: 100%;
+  background-position-y: center;
+}
 
 /* Scope hint — shows the scoped GTK CSS selector */
 .scope-hint {

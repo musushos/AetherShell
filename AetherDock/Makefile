@@ -10,6 +10,7 @@ PKGS = gtk+-3.0 gtk-layer-shell-0 wayland-client gio-unix-2.0
 
 CFLAGS = -Wall -Wextra -O2 -Iinclude -Iinclude/logic -Iinclude/ui -I$(PROTO_DIR) $(shell pkg-config --cflags $(PKGS))
 LIBS = $(shell pkg-config --libs $(PKGS))
+LDLIBS = -lm
 
 # Logic Objects
 LOGIC_OBJS = $(BUILD_DIR)/search_engine.o \
@@ -36,7 +37,7 @@ PROTO_OBJS = $(BUILD_DIR)/wlr-foreign-toplevel-management-unstable-v1-client-pro
 all: $(BUILD_DIR) $(PROTO_DIR) AetherDock
 
 AetherDock: $(LOGIC_OBJS) $(UI_HELPER_OBJS) $(PANEL_OBJS) $(PROTO_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) $(LDLIBS)
 
 $(BUILD_DIR)/%.o: src/logic/%.c
 	$(CC) $(CFLAGS) -c $< -o $@

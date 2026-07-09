@@ -145,7 +145,7 @@ window._aether = {
 
 function defaultLayout() {
   return {
-    panel: { height: 36, spacing: 0, margin: { top: 0, left: 0, right: 0 } },
+    panel: { position: 'top', height: 36, spacing: 0, margin: { top: 0, left: 0, right: 0 } },
     layout: {
       left:   [{ type: 'pill', id: 'menu-pill',       spacing: 0, plugins: ['aether-appmenu','aether-clipboard'] },
                { type: 'pill', id: 'workspaces-pill', spacing: 0, plugins: ['aether-workspaces'] }],
@@ -288,6 +288,7 @@ function buildPluginTag(pluginId, pillId) {
     removePluginFromPill(pluginId, pillId);
   });
   tag.addEventListener('dragstart', onTagDragStart);
+  tag.addEventListener('dragend', function() { this.classList.remove('dragging'); });
   return tag;
 }
 
@@ -385,6 +386,13 @@ function wireInspector() {
     }
   });
 
+  /* Panel configuration */
+  document.getElementById('prop-panel-position').addEventListener('change', function() {
+    if (!state.layout.panel) state.layout.panel = {};
+    state.layout.panel.position = this.value;
+    markDirty();
+  });
+
   /* Panel background */
   document.getElementById('prop-panel-color').addEventListener('input', function() {
     state.panelBg.color = this.value;
@@ -405,6 +413,8 @@ function wireInspector() {
 }
 
 function syncPanelBgControls() {
+  const panelPos = state.layout.panel && state.layout.panel.position ? state.layout.panel.position : 'top';
+  document.getElementById('prop-panel-position').value = panelPos;
   document.getElementById('prop-panel-color').value = state.panelBg.color;
   document.getElementById('prop-panel-alpha').value = state.panelBg.alpha;
   document.getElementById('prop-panel-alpha-val').textContent = state.panelBg.alpha + '%';
@@ -523,9 +533,12 @@ function onPluginDragStart(e) {
 }
 
 function onTagDragStart(e) {
-  dragData = { type: 'plugin-tag', pluginId: this.dataset.pluginId, fromPill: this.dataset.pillId };
+  const children = Array.from(this.parentNode.children);
+  const idx = children.indexOf(this);
+  dragData = { type: 'plugin-tag', pluginId: this.dataset.pluginId, fromPill: this.dataset.pillId, sourceIdx: idx };
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', this.dataset.pluginId);
+  this.classList.add('dragging');
   e.stopPropagation();
 }
 
@@ -553,6 +566,21 @@ function setupZoneDrop(zoneEl) {
   });
 }
 
+function getDropIndex(container, x, y) {
+  const children = [...container.children].filter(c => !c.classList.contains('dragging'));
+  for (let i = 0; i < children.length; i++) {
+    const box = children[i].getBoundingClientRect();
+    if (y >= box.top && y <= box.bottom) {
+      if (x < box.left + box.width / 2) {
+        return i;
+      }
+    } else if (y < box.top) {
+      return i;
+    }
+  }
+  return children.length;
+}
+
 function setupPluginDropInPill(pluginArea, pillId) {
   pluginArea.addEventListener('dragover', e => {
     e.preventDefault();
@@ -571,10 +599,17 @@ function setupPluginDropInPill(pluginArea, pillId) {
     if (!dragData) return;
     const snap = { ...dragData };
     dragData = null;
+    
+    const dropIdx = getDropIndex(pluginArea, e.clientX, e.clientY);
+
     if (snap.type === 'from-palette') {
-      addPluginToPill(snap.pluginId, pillId);
-    } else if (snap.type === 'plugin-tag' && snap.fromPill !== pillId) {
-      movePluginBetweenPills(snap.pluginId, snap.fromPill, pillId);
+      insertPluginToPill(snap.pluginId, pillId, dropIdx);
+    } else if (snap.type === 'plugin-tag') {
+      if (snap.fromPill === pillId) {
+        reorderPluginInPill(snap.pluginId, pillId, snap.sourceIdx, dropIdx);
+      } else {
+        movePluginBetweenPillsAt(snap.pluginId, snap.fromPill, pillId, snap.sourceIdx, dropIdx);
+      }
     }
   });
 }
@@ -639,11 +674,28 @@ function renamePill(pill, card) {
   renderPreview();
 }
 
-function addPluginToPill(pluginId, pillId) {
+function insertPluginToPill(pluginId, pillId, targetIdx) {
   const found = findPill(pillId);
   if (!found) return;
-  if (!found.pill.plugins.includes(pluginId))
-    found.pill.plugins.push(pluginId);
+  const ex = found.pill.plugins.indexOf(pluginId);
+  if (ex !== -1) found.pill.plugins.splice(ex, 1);
+  
+  let insertAt = targetIdx;
+  if (ex !== -1 && ex < targetIdx) insertAt--;
+  found.pill.plugins.splice(insertAt, 0, pluginId);
+  markDirty();
+  renderZones();
+  renderPreview();
+}
+
+function reorderPluginInPill(pluginId, pillId, sourceIdx, targetIdx) {
+  const found = findPill(pillId);
+  if (!found) return;
+  if (sourceIdx >= 0 && sourceIdx < found.pill.plugins.length) {
+      found.pill.plugins.splice(sourceIdx, 1);
+      // targetIdx is already computed relative to the remaining elements
+      found.pill.plugins.splice(targetIdx, 0, pluginId);
+  }
   markDirty();
   renderZones();
   renderPreview();
@@ -658,9 +710,23 @@ function removePluginFromPill(pluginId, pillId) {
   renderPreview();
 }
 
-function movePluginBetweenPills(pluginId, fromPillId, toPillId) {
-  removePluginFromPill(pluginId, fromPillId);
-  addPluginToPill(pluginId, toPillId);
+function movePluginBetweenPillsAt(pluginId, fromPillId, toPillId, sourceIdx, targetIdx) {
+  const fromFound = findPill(fromPillId);
+  if (fromFound) {
+      fromFound.pill.plugins.splice(sourceIdx, 1);
+  }
+  const toFound = findPill(toPillId);
+  if (toFound) {
+      const ex = toFound.pill.plugins.indexOf(pluginId);
+      if (ex !== -1) toFound.pill.plugins.splice(ex, 1);
+      
+      let insertAt = targetIdx;
+      if (ex !== -1 && ex < targetIdx) insertAt--;
+      toFound.pill.plugins.splice(insertAt, 0, pluginId);
+  }
+  markDirty();
+  renderZones();
+  renderPreview();
 }
 
 /* ── Add pill buttons ──────────────────────────────────────────────── */

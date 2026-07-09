@@ -20,6 +20,9 @@ add_project_arguments([
 	'-Wvla',
 ], language: 'c')
 
+cc = meson.get_compiler('c')
+math_dep = cc.find_library('m', required: false)
+
 wayland_client = dependency('wayland-client')
 wayland_protos = dependency('wayland-protocols', version: '>=1.40')
 wayland_server = dependency('wayland-server')
@@ -75,6 +78,7 @@ executable(
 		wayland_server,
 		logind,
 		gdk_pixbuf,
+		math_dep,
 	],
 	install: true,
 )

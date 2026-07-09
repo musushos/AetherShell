@@ -16,6 +16,13 @@
     <span id="dirty-badge" class="badge hidden">Unsaved</span>
   </div>
   <div class="topbar-right">
+    <div style="display:flex; align-items:center; gap:8px; margin-right: 16px;">
+      <span style="font-size:12px; color:var(--text-muted); font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Position</span>
+      <select id="prop-panel-position" class="panel-select" style="width:120px; margin-top:0; padding:4px 8px; font-size: 13px;">
+        <option value="top">Top</option>
+        <option value="bottom">Bottom</option>
+      </select>
+    </div>
     <button class="btn btn-ghost" id="btn-reset" title="Discard all changes">↩ Reset</button>
     <button class="btn btn-accent" id="btn-apply" title="Apply CSS immediately (no restart needed)">⚡ Apply Style</button>
     <button class="btn btn-primary" id="btn-save" title="Save layout + style">💾 Save</button>

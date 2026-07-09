@@ -1,7 +1,7 @@
 project(
 	'aetherlock',
 	'c',
-	version: '1.8.5',
+	version: '0.1.0',
 	license: 'MIT',
 	meson_version: '>=0.59.0',
 	default_options: [
