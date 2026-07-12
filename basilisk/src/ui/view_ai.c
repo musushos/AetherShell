@@ -168,28 +168,125 @@ static void on_ai_window_realize_disable_decorations(GtkWidget *widget, gpointer
     }
 }
 
-static void on_execute_clicked(GtkButton *btn, gpointer user_data) {
-    const gchar *cmd = (const gchar *)user_data;
-    if (cmd) {
-        gchar *term_cmd = g_strdup_printf("x-terminal-emulator -e bash -c \"%s; echo ''; read -p 'Press Enter to close...'\"", cmd);
-        g_spawn_command_line_async(term_cmd, NULL);
-        g_free(term_cmd);
+static void on_perm_dialog_realize(GtkWidget *widget, gpointer data) {
+    GdkWindow *gdk_window;
+    (void)data;
+    gdk_window = gtk_widget_get_window(widget);
+    if (!gdk_window) return;
+
+#ifdef GDK_WINDOWING_WAYLAND
+    if (GDK_IS_WAYLAND_WINDOW(gdk_window)) {
+        gdk_wayland_window_announce_csd(gdk_window);
+    } else
+#endif
+    {
+        gdk_window_set_decorations(gdk_window, 0);
     }
-    gtk_widget_destroy(GTK_WIDGET(btn));
 }
 
-static void show_execute_button(AiChatData *data, const gchar *cmd) {
-    if (!cmd || strlen(cmd) == 0) return;
-    gchar *label = g_strdup_printf("🚀 Execute Command: %s", cmd);
-    GtkWidget *btn = gtk_button_new_with_label(label);
-    g_free(label);
+static gboolean show_permission_dialog(GtkWidget *parent_window, const gchar *cmd) {
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(
+        "",
+        GTK_WINDOW(parent_window),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        NULL);
+        
+    gtk_window_set_decorated(GTK_WINDOW(dialog), FALSE);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 480, -1);
+    gtk_window_set_position(GTK_WINDOW(dialog), GTK_WIN_POS_CENTER_ON_PARENT);
+    gtk_widget_set_name(dialog, "ai-perm-dialog");
     
-    g_object_set_data_full(G_OBJECT(btn), "cmd", g_strdup(cmd), g_free);
-    g_signal_connect(btn, "clicked", G_CALLBACK(on_execute_clicked), g_object_get_data(G_OBJECT(btn), "cmd"));
+    g_signal_connect(dialog, "realize", G_CALLBACK(on_perm_dialog_realize), NULL);
     
-    gtk_box_pack_start(GTK_BOX(data->action_box), btn, FALSE, FALSE, 0);
-    gtk_widget_show_all(data->action_box);
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_box_set_spacing(GTK_BOX(content_area), 12);
+    gtk_container_set_border_width(GTK_CONTAINER(content_area), 20);
+    
+    GtkWidget *title_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    GtkWidget *icon = gtk_image_new_from_icon_name("dialog-warning", GTK_ICON_SIZE_DIALOG);
+    GtkWidget *title = gtk_label_new("⚠️ VAI Requires Permission");
+    gtk_widget_set_name(title, "ai-perm-title");
+    gtk_box_pack_start(GTK_BOX(title_box), icon, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(title_box), title, FALSE, FALSE, 0);
+    
+    GtkWidget *desc = gtk_label_new("The AI is attempting to execute a system command. Do you allow this action?");
+    gtk_widget_set_name(desc, "ai-perm-desc");
+    gtk_label_set_line_wrap(GTK_LABEL(desc), TRUE);
+    gtk_widget_set_halign(desc, GTK_ALIGN_START);
+    
+    GtkWidget *cmd_lbl = gtk_label_new(cmd);
+    gtk_widget_set_name(cmd_lbl, "ai-perm-cmd");
+    gtk_label_set_line_wrap(GTK_LABEL(cmd_lbl), TRUE);
+    gtk_widget_set_halign(cmd_lbl, GTK_ALIGN_FILL);
+    
+    gtk_box_pack_start(GTK_BOX(content_area), title_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content_area), desc, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content_area), cmd_lbl, TRUE, TRUE, 0);
+    
+    GtkWidget *action_area = gtk_dialog_get_action_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(action_area), 12);
+    
+    GtkWidget *btn_cancel = gtk_button_new_with_label("إلغاء (Cancel)");
+    gtk_widget_set_name(btn_cancel, "ai-perm-btn-cancel");
+    gtk_dialog_add_action_widget(GTK_DIALOG(dialog), btn_cancel, GTK_RESPONSE_CANCEL);
+    
+    GtkWidget *btn_accept = gtk_button_new_with_label("موافقة (Accept)");
+    gtk_widget_set_name(btn_accept, "ai-perm-btn-accept");
+    gtk_dialog_add_action_widget(GTK_DIALOG(dialog), btn_accept, GTK_RESPONSE_ACCEPT);
+    
+    gtk_widget_show_all(dialog);
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+    
+    return (response == GTK_RESPONSE_ACCEPT);
 }
+
+static void start_typewriter(AiChatData *data);
+
+static void prompt_execute_command(AiChatData *data, const gchar *cmd) {
+    if (!cmd || strlen(cmd) == 0) return;
+    
+    gchar *cmd_copy = g_strdup(cmd);
+    if (data->extracted_command) {
+        g_free(data->extracted_command);
+        data->extracted_command = NULL;
+    }
+    
+    if (data->type_timer > 0) {
+        g_source_remove(data->type_timer);
+        data->type_timer = 0;
+    }
+    
+    gboolean accepted = show_permission_dialog(data->window, cmd_copy);
+    
+    GtkWidget *lbl = gtk_label_new(NULL);
+    gtk_widget_set_halign(lbl, GTK_ALIGN_START);
+    gtk_label_set_line_wrap(GTK_LABEL(lbl), TRUE);
+    gtk_widget_set_margin_top(lbl, 8);
+    gtk_widget_set_margin_bottom(lbl, 8);
+    
+    if (accepted) {
+        gchar *term_cmd = g_strdup_printf("x-terminal-emulator -e bash -c \"%s; echo ''; read -p 'Press Enter to close...'\"", cmd_copy);
+        g_spawn_command_line_async(term_cmd, NULL);
+        g_free(term_cmd);
+        
+        gchar *msg = g_strdup_printf("✅ Command Executed: %s", cmd_copy);
+        gtk_label_set_text(GTK_LABEL(lbl), msg);
+        g_free(msg);
+        gtk_widget_override_color(lbl, GTK_STATE_FLAG_NORMAL, &(GdkRGBA){0.3, 0.9, 0.5, 1.0});
+    } else {
+        gchar *msg = g_strdup_printf("❌ Command Cancelled: %s", cmd_copy);
+        gtk_label_set_text(GTK_LABEL(lbl), msg);
+        g_free(msg);
+        gtk_widget_override_color(lbl, GTK_STATE_FLAG_NORMAL, &(GdkRGBA){0.9, 0.4, 0.4, 1.0});
+    }
+    
+    gtk_box_pack_start(GTK_BOX(data->action_box), lbl, FALSE, FALSE, 0);
+    gtk_widget_show_all(data->action_box);
+    
+    g_free(cmd_copy);
+    start_typewriter(data);
+};
 
 static gchar *run_bg_command(const gchar *cmd) {
     gchar *std_out = NULL;
@@ -357,8 +454,10 @@ static gboolean typewriter_tick(gpointer user_data) {
         if (g_str_has_prefix(p, "</execute>")) {
             data->in_execute_block = FALSE;
             data->char_index += 10;
-            show_execute_button(data, data->extracted_command);
-            return TRUE;
+            data->ignore_rest = TRUE;
+            p[10] = '\0';
+            prompt_execute_command(data, data->extracted_command);
+            return FALSE;
         }
         
         gchar *next = g_utf8_next_char(p);
@@ -381,6 +480,8 @@ static gboolean typewriter_tick(gpointer user_data) {
         if (g_str_has_prefix(p, "</bg_execute>")) {
             data->in_bg_execute_block = FALSE;
             data->char_index += 13;
+            data->ignore_rest = TRUE;
+            p[13] = '\0';
             
             GtkWidget *align = gtk_widget_get_parent(data->current_ai_textview);
             gtk_widget_destroy(align);
@@ -494,14 +595,9 @@ static gboolean typewriter_tick(gpointer user_data) {
 }
 
 static void start_typewriter(AiChatData *data) {
-    if (data->type_timer > 0) g_source_remove(data->type_timer);
-    data->char_index = 0;
-    data->in_code_block = FALSE;
-    data->in_inline_code = FALSE;
-    data->in_bold = FALSE;
-    data->skip_until_newline = FALSE;
-    data->is_done = FALSE;
-    data->type_timer = g_timeout_add(10, typewriter_tick, data);
+    if (data->type_timer == 0) {
+        data->type_timer = g_timeout_add(15, typewriter_tick, data);
+    }
 }
 
 static void on_ai_response_chunk(const gchar *chunk, gboolean is_done, gpointer user_data) {
@@ -577,6 +673,12 @@ static void fetch_response_hidden(AiChatData *data, const gchar *query) {
     if (data->extracted_bg_command) { g_free(data->extracted_bg_command); data->extracted_bg_command = NULL; }
     data->in_bg_execute_block = FALSE;
     data->ignore_rest = FALSE;
+    data->char_index = 0;
+    data->in_code_block = FALSE;
+    data->in_inline_code = FALSE;
+    data->in_bold = FALSE;
+    data->skip_until_newline = FALSE;
+    data->is_done = FALSE;
     
     add_thinking_row(data, "VAI يحلل النتائج...");
     
@@ -597,6 +699,12 @@ static void fetch_response(AiChatData *data, const gchar *query) {
     if (data->extracted_bg_command) { g_free(data->extracted_bg_command); data->extracted_bg_command = NULL; }
     data->in_bg_execute_block = FALSE;
     data->ignore_rest = FALSE;
+    data->char_index = 0;
+    data->in_code_block = FALSE;
+    data->in_inline_code = FALSE;
+    data->in_bold = FALSE;
+    data->skip_until_newline = FALSE;
+    data->is_done = FALSE;
     
     add_chat_bubble(data, query, TRUE);
     add_thinking_row(data, "VAI يفكّر");
@@ -666,7 +774,15 @@ void view_ai_show(const gchar *initial_query) {
             "textview.ai-bubble { background: transparent; font-family: 'Tajawal', sans-serif; font-size: 14.5px; color: #eef1f6; }"
             "box.user-bubble label { font-family: 'Tajawal', sans-serif; color: #eef1f6; font-size: 14.5px; }"
             ".thinking-label { font-family: 'Chakra Petch', sans-serif; font-size: 12px; color: #5c6478; letter-spacing: 0.3px; }"
-            "#ai-hint { text-align: center; font-size: 10.5px; color: #5c6478; margin-top: 10px; margin-bottom: 5px; font-family: 'Chakra Petch', sans-serif; letter-spacing: 0.4px; }", -1, NULL);
+            "#ai-hint { text-align: center; font-size: 10.5px; color: #5c6478; margin-top: 10px; margin-bottom: 5px; font-family: 'Chakra Petch', sans-serif; letter-spacing: 0.4px; }"
+            "#ai-perm-dialog { background: rgba(19, 21, 29, 0.95); border: 1px solid rgba(79, 227, 207, 0.35); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }"
+            "#ai-perm-title { color: #4fe3cf; font-family: 'Chakra Petch', sans-serif; font-weight: bold; font-size: 16px; margin-top: 6px; }"
+            "#ai-perm-desc { color: #eef1f6; font-family: 'Tajawal', sans-serif; font-size: 14.5px; }"
+            "#ai-perm-cmd { color: #eef1f6; font-family: monospace; font-size: 13.5px; background: rgba(0,0,0,0.4); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-top: 8px; }"
+            "#ai-perm-btn-accept { background: linear-gradient(135deg, #4fe3cf, #2b8f83); color: #07080c; border: none; border-radius: 8px; padding: 8px 24px; font-family: 'Tajawal', sans-serif; font-weight: bold; margin: 10px; }"
+            "#ai-perm-btn-accept:hover { background: linear-gradient(135deg, #6aece0, #4fe3cf); }"
+            "#ai-perm-btn-cancel { background: rgba(255,255,255,0.05); color: #eef1f6; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 24px; font-family: 'Tajawal', sans-serif; margin: 10px; }"
+            "#ai-perm-btn-cancel:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }", -1, NULL);
         gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_USER + 100);
         g_object_unref(css);
         css_applied = TRUE;
