@@ -24,6 +24,7 @@ typedef struct {
     gboolean in_bg_execute_block;
     gchar *extracted_bg_command;
     gchar *last_user_query;
+    gboolean ignore_rest;
     GtkWidget *action_box;
     GtkTextMark *ai_response_start_mark;
 } AiChatData;
@@ -257,6 +258,16 @@ static void start_typewriter(AiChatData *data) {
 
 static void on_ai_response_chunk(const gchar *chunk, gboolean is_done, gpointer user_data) {
     AiChatData *data = (AiChatData *)user_data;
+    
+    if (data->ignore_rest) {
+        if (is_done) {
+            data->is_done = TRUE;
+            gtk_spinner_stop(GTK_SPINNER(data->spinner));
+            gtk_label_set_text(GTK_LABEL(data->status_label), "Done.");
+        }
+        return;
+    }
+    
     if (chunk) {
         if (data->response) {
             gchar *tmp = g_strconcat(data->response, chunk, NULL);
@@ -266,10 +277,44 @@ static void on_ai_response_chunk(const gchar *chunk, gboolean is_done, gpointer 
             data->response = g_strdup(chunk);
         }
     }
+    
+    gchar *ad_marker = g_strstr_len(data->response, -1, "Support Pollinations.AI:");
+    if (ad_marker) {
+        data->ignore_rest = TRUE;
+        
+        gchar *truncate_point = g_strrstr_len(data->response, ad_marker - data->response, "---");
+        if (truncate_point) {
+            while (truncate_point > data->response && (*(truncate_point - 1) == '\n' || *(truncate_point - 1) == '\r' || *(truncate_point - 1) == ' ')) {
+                truncate_point--;
+            }
+            *truncate_point = '\0';
+        } else {
+            *ad_marker = '\0';
+        }
+        
+        GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
+        GtkTextIter end_iter, match_start, match_end;
+        gtk_text_buffer_get_end_iter(buf, &end_iter);
+        if (gtk_text_iter_backward_search(&end_iter, "---", 0, &match_start, &match_end, NULL)) {
+            while (gtk_text_iter_backward_char(&match_start)) {
+                gunichar c = gtk_text_iter_get_char(&match_start);
+                if (c != '\n' && c != '\r' && c != ' ') {
+                    gtk_text_iter_forward_char(&match_start);
+                    break;
+                }
+            }
+            gtk_text_buffer_delete(buf, &match_start, &end_iter);
+        }
+        
+        if (data->response && data->char_index > (gint)strlen(data->response)) {
+            data->char_index = strlen(data->response);
+        }
+    }
+    
     if (is_done) {
         data->is_done = TRUE;
         gtk_spinner_stop(GTK_SPINNER(data->spinner));
-        if (!data->response) {
+        if (!data->response || strlen(data->response) == 0) {
             gtk_label_set_text(GTK_LABEL(data->status_label), "No response.");
         }
     } else if (data->type_timer == 0 && data->response) {
@@ -287,6 +332,7 @@ static void fetch_response_hidden(AiChatData *data, const gchar *query) {
     data->in_execute_block = FALSE;
     if (data->extracted_bg_command) { g_free(data->extracted_bg_command); data->extracted_bg_command = NULL; }
     data->in_bg_execute_block = FALSE;
+    data->ignore_rest = FALSE;
     
     gtk_label_set_text(GTK_LABEL(data->status_label), "VAI is analyzing results...");
     gtk_spinner_start(GTK_SPINNER(data->spinner));
@@ -307,6 +353,7 @@ static void fetch_response(AiChatData *data, const gchar *query) {
     data->in_execute_block = FALSE;
     if (data->extracted_bg_command) { g_free(data->extracted_bg_command); data->extracted_bg_command = NULL; }
     data->in_bg_execute_block = FALSE;
+    data->ignore_rest = FALSE;
     
     GList *children = gtk_container_get_children(GTK_CONTAINER(data->action_box));
     for (GList *iter = children; iter != NULL; iter = g_list_next(iter)) {
