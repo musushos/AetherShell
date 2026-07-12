@@ -7,7 +7,9 @@
 
 typedef struct {
     GtkWidget *window;
-    GtkWidget *text_view;
+    GtkWidget *message_list_box;
+    GtkWidget *current_ai_textview;
+    GtkWidget *scroll;
     GtkWidget *entry;
     GtkWidget *spinner;
     GtkWidget *status_label;
@@ -26,7 +28,6 @@ typedef struct {
     gchar *last_user_query;
     gboolean ignore_rest;
     GtkWidget *action_box;
-    GtkTextMark *ai_response_start_mark;
 } AiChatData;
 
 static void on_ai_window_realize_disable_decorations(GtkWidget *widget, gpointer user_data) {
@@ -82,6 +83,65 @@ static gchar *run_bg_command(const gchar *cmd) {
     return result;
 }
 
+static void auto_scroll(AiChatData *data) {
+    if (!data->scroll) return;
+    GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(data->scroll));
+    gtk_adjustment_set_value(adj, gtk_adjustment_get_upper(adj));
+}
+
+static void add_chat_bubble(AiChatData *data, const gchar *text, gboolean is_user) {
+    GtkWidget *align = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    
+    if (is_user) {
+        GtkWidget *bubble_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        gtk_widget_set_halign(bubble_box, GTK_ALIGN_END);
+        gtk_widget_set_margin_start(bubble_box, 60);
+        gtk_style_context_add_class(gtk_widget_get_style_context(bubble_box), "user-bubble");
+        
+        GtkWidget *label = gtk_label_new(text);
+        gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+        gtk_label_set_max_width_chars(GTK_LABEL(label), 50);
+        gtk_label_set_xalign(GTK_LABEL(label), 0.0);
+        gtk_widget_set_margin_top(label, 10);
+        gtk_widget_set_margin_bottom(label, 10);
+        gtk_widget_set_margin_start(label, 14);
+        gtk_widget_set_margin_end(label, 14);
+        
+        gtk_box_pack_start(GTK_BOX(bubble_box), label, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(align), bubble_box, FALSE, FALSE, 0);
+    } else {
+        GtkWidget *bubble = gtk_text_view_new();
+        gtk_text_view_set_editable(GTK_TEXT_VIEW(bubble), FALSE);
+        gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(bubble), GTK_WRAP_WORD_CHAR);
+        gtk_text_view_set_left_margin(GTK_TEXT_VIEW(bubble), 12);
+        gtk_text_view_set_right_margin(GTK_TEXT_VIEW(bubble), 12);
+        gtk_text_view_set_top_margin(GTK_TEXT_VIEW(bubble), 12);
+        gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(bubble), 12);
+        gtk_widget_set_name(bubble, "ai-textview");
+        
+        GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(bubble));
+        gtk_text_buffer_create_tag(buf, "code_block", "family", "Monospace", "background", "#2b2b2b", "foreground", "#a9b7c6", "paragraph-background", "#1e1e1e", NULL);
+        gtk_text_buffer_create_tag(buf, "inline_code", "family", "Monospace", "background", "#3c3c3c", "foreground", "#f8c555", NULL);
+        gtk_text_buffer_create_tag(buf, "bold", "weight", PANGO_WEIGHT_BOLD, NULL);
+        
+        gtk_widget_set_halign(bubble, GTK_ALIGN_FILL);
+        gtk_widget_set_hexpand(bubble, TRUE);
+        gtk_widget_set_margin_end(bubble, 60);
+        gtk_style_context_add_class(gtk_widget_get_style_context(bubble), "ai-bubble");
+        gtk_box_pack_start(GTK_BOX(align), bubble, FALSE, FALSE, 0);
+        
+        data->action_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+        gtk_widget_set_halign(data->action_box, GTK_ALIGN_START);
+        gtk_widget_set_margin_start(data->action_box, 12);
+        gtk_box_pack_start(GTK_BOX(align), data->action_box, FALSE, FALSE, 0);
+        data->current_ai_textview = bubble;
+    }
+    
+    gtk_box_pack_start(GTK_BOX(data->message_list_box), align, FALSE, FALSE, 8);
+    gtk_widget_show_all(data->message_list_box);
+    auto_scroll(data);
+}
+
 static void fetch_response_hidden(AiChatData *data, const gchar *query);
 
 static gboolean typewriter_tick(gpointer user_data) {
@@ -127,13 +187,8 @@ static gboolean typewriter_tick(gpointer user_data) {
             data->in_bg_execute_block = FALSE;
             data->char_index += 13;
             
-            GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
-            GtkTextIter start_iter, end_iter;
-            if (data->ai_response_start_mark) {
-                gtk_text_buffer_get_iter_at_mark(buf, &start_iter, data->ai_response_start_mark);
-                gtk_text_buffer_get_end_iter(buf, &end_iter);
-                gtk_text_buffer_delete(buf, &start_iter, &end_iter);
-            }
+            GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->current_ai_textview));
+            gtk_text_buffer_set_text(buf, "", -1);
             
             gchar *stdout_txt = run_bg_command(data->extracted_bg_command);
             gchar *hidden_query = g_strdup_printf(
@@ -214,7 +269,7 @@ static gboolean typewriter_tick(gpointer user_data) {
         return TRUE;
     }
 
-    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->current_ai_textview));
     gchar *next = g_utf8_next_char(p);
     gint len = next - p;
 
@@ -236,10 +291,7 @@ static gboolean typewriter_tick(gpointer user_data) {
     }
     
     data->char_index += len;
-    
-    GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, &end, FALSE);
-    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(data->text_view), mark, 0, TRUE, 0, 1);
-    gtk_text_buffer_delete_mark(buf, mark);
+    auto_scroll(data);
     
     return TRUE;
 }
@@ -292,7 +344,7 @@ static void on_ai_response_chunk(const gchar *chunk, gboolean is_done, gpointer 
             *ad_marker = '\0';
         }
         
-        GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
+        GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->current_ai_textview));
         GtkTextIter end_iter, match_start, match_end;
         gtk_text_buffer_get_end_iter(buf, &end_iter);
         if (gtk_text_iter_backward_search(&end_iter, "---", 0, &match_start, &match_end, NULL)) {
@@ -355,34 +407,8 @@ static void fetch_response(AiChatData *data, const gchar *query) {
     data->in_bg_execute_block = FALSE;
     data->ignore_rest = FALSE;
     
-    GList *children = gtk_container_get_children(GTK_CONTAINER(data->action_box));
-    for (GList *iter = children; iter != NULL; iter = g_list_next(iter)) {
-        gtk_widget_destroy(GTK_WIDGET(iter->data));
-    }
-    g_list_free(children);
-    
-    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
-    GtkTextIter end;
-    gtk_text_buffer_get_end_iter(buf, &end);
-    
-    if (gtk_text_iter_get_offset(&end) > 0) {
-        gtk_text_buffer_insert(buf, &end, "\n\n", -1);
-    }
-    
-    gtk_text_buffer_insert_with_tags_by_name(buf, &end, "VAXP Client:\n", -1, "user_name", NULL);
-    gtk_text_buffer_insert_with_tags_by_name(buf, &end, query, -1, "user_msg", NULL);
-    
-    gtk_text_buffer_insert(buf, &end, "\n\n", -1);
-    gtk_text_buffer_insert_with_tags_by_name(buf, &end, "VAXP AI:\n", -1, "ai_name", NULL);
-    
-    if (data->ai_response_start_mark) {
-        gtk_text_buffer_delete_mark(buf, data->ai_response_start_mark);
-    }
-    data->ai_response_start_mark = gtk_text_buffer_create_mark(buf, NULL, &end, TRUE);
-    
-    GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, &end, FALSE);
-    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(data->text_view), mark, 0, TRUE, 0, 1);
-    gtk_text_buffer_delete_mark(buf, mark);
+    add_chat_bubble(data, query, TRUE);
+    add_chat_bubble(data, "", FALSE); // Create empty AI bubble
     
     gtk_label_set_text(GTK_LABEL(data->status_label), "VAI is thinking...");
     gtk_spinner_start(GTK_SPINNER(data->spinner));
@@ -437,8 +463,10 @@ void view_ai_show(const gchar *initial_query) {
             "#ai-entry { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(0, 0, 0, 1); border-radius: 10px; padding: 14px 16px; color: #ffffff; font-size: 15px; caret-color: rgba(0, 0, 0, 0); }"
             "#ai-entry:focus { border-color: rgba(0, 0, 0, 0); background: rgba(255, 255, 255, 0.12); }"
             "#ai-response-scroll { background: rgba(0, 0, 0, 0.3); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); }"
-            "#ai-textview { background: transparent; font-size: 15px; color: #e0e0e0; }"
-            "#ai-textview text { background: transparent; }"
+            "textview.ai-bubble text { background: transparent; }"
+            "textview.ai-bubble { background: rgba(50, 50, 50, 0.8); border-radius: 12px; font-size: 15px; color: #e0e0e0; }"
+            "box.user-bubble { background: rgba(40, 100, 200, 0.8); border-radius: 12px; }"
+            "box.user-bubble label { color: #ffffff; font-size: 15px; }"
             "#ai-footer { padding: 8px 0; }"
             "#ai-status { color: #888888; font-size: 12px; }", -1, NULL);
         gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_USER + 100);
@@ -478,51 +506,21 @@ void view_ai_show(const gchar *initial_query) {
     gtk_box_pack_start(GTK_BOX(main_box), content, TRUE, TRUE, 0);
     
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    data->scroll = scroll;
     gtk_widget_set_name(scroll, "ai-response-scroll");
     gtk_widget_set_vexpand(scroll, TRUE);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     
-    data->text_view = gtk_text_view_new();
-    gtk_widget_set_name(data->text_view, "ai-textview");
+    data->message_list_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    gtk_container_set_border_width(GTK_CONTAINER(data->message_list_box), 12);
     
-    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
-    gtk_text_buffer_create_tag(buf, "code_block", 
-                               "family", "Monospace", 
-                               "background", "#2b2b2b", 
-                               "foreground", "#a9b7c6", 
-                               "paragraph-background", "#1e1e1e", 
-                               NULL);
-    gtk_text_buffer_create_tag(buf, "inline_code", 
-                               "family", "Monospace", 
-                               "background", "#3c3c3c", 
-                               "foreground", "#f8c555", 
-                               NULL);
-    gtk_text_buffer_create_tag(buf, "bold", 
-                               "weight", PANGO_WEIGHT_BOLD, 
-                               NULL);
-    gtk_text_buffer_create_tag(buf, "user_name", 
-                               "weight", PANGO_WEIGHT_BOLD, 
-                               "foreground", "#4da6ff", 
-                               NULL);
-    gtk_text_buffer_create_tag(buf, "ai_name", 
-                               "weight", PANGO_WEIGHT_BOLD, 
-                               "foreground", "#ff4da6", 
-                               NULL);
-    gtk_text_buffer_create_tag(buf, "user_msg", 
-                               "foreground", "#ffffff", 
-                               NULL);
-                               
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(data->text_view), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(data->text_view), GTK_WRAP_WORD_CHAR);
-    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(data->text_view), 16);
-    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(data->text_view), 16);
-    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(data->text_view), 12);
-    gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(data->text_view), 12);
-    gtk_container_add(GTK_CONTAINER(scroll), data->text_view);
+    // In GTK3, GtkBox inside ScrolledWindow needs to be added via Viewport if it doesn't support scrolling natively
+    GtkWidget *viewport = gtk_viewport_new(NULL, NULL);
+    gtk_viewport_set_shadow_type(GTK_VIEWPORT(viewport), GTK_SHADOW_NONE);
+    gtk_container_add(GTK_CONTAINER(viewport), data->message_list_box);
+    gtk_container_add(GTK_CONTAINER(scroll), viewport);
+    
     gtk_box_pack_start(GTK_BOX(content), scroll, TRUE, TRUE, 0);
-    
-    data->action_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-    gtk_box_pack_start(GTK_BOX(content), data->action_box, FALSE, FALSE, 0);
     
     GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_name(footer, "ai-footer");
