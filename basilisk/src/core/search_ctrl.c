@@ -1,17 +1,8 @@
-/*
- * ═══════════════════════════════════════════════════════════════════════════
- * 🔎 Vaxp Basilisk - Search Module
- * ═══════════════════════════════════════════════════════════════════════════
- */
+#include "core/search_ctrl.h"
+#include <gio/gio.h>
+#include <string.h>
 
-#include "search.h"
-#include "window.h"
-
-extern BasiliskState *state;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Category Mapping
-// ═══════════════════════════════════════════════════════════════════════════
+static GList *app_cache = NULL;
 
 static AppCategory parse_category(const gchar *categories) {
     if (!categories) return CAT_OTHER;
@@ -39,10 +30,6 @@ static AppCategory parse_category(const gchar *categories) {
     return cat;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// App Cache
-// ═══════════════════════════════════════════════════════════════════════════
-
 static void free_app_entry(gpointer data) {
     AppEntry *app = (AppEntry *)data;
     if (app) {
@@ -60,8 +47,8 @@ static gint compare_apps(gconstpointer a, gconstpointer b) {
     return g_utf8_collate(app_a->name, app_b->name);
 }
 
-void search_load_apps(void) {
-    if (state->app_cache) return;
+void search_ctrl_init(void) {
+    if (app_cache) return;
     
     const gchar *dirs[] = {
         "/usr/share/applications",
@@ -88,9 +75,8 @@ void search_load_apps(void) {
                 if (!no_display && !hidden) {
                     gchar *name = g_key_file_get_locale_string(kf, "Desktop Entry", "Name", NULL, NULL);
                     if (name) {
-                        // Check for duplicates
                         gboolean exists = FALSE;
-                        for (GList *l = state->app_cache; l != NULL; l = l->next) {
+                        for (GList *l = app_cache; l != NULL; l = l->next) {
                             AppEntry *existing = (AppEntry *)l->data;
                             if (g_strcmp0(existing->name, name) == 0) {
                                 exists = TRUE;
@@ -105,12 +91,11 @@ void search_load_apps(void) {
                             app->icon = g_key_file_get_string(kf, "Desktop Entry", "Icon", NULL);
                             app->desktop_file = g_strdup(filepath);
                             
-                            // Parse category
                             gchar *cats = g_key_file_get_string(kf, "Desktop Entry", "Categories", NULL);
                             app->category = parse_category(cats);
                             g_free(cats);
                             
-                            state->app_cache = g_list_append(state->app_cache, app);
+                            app_cache = g_list_append(app_cache, app);
                         } else {
                             g_free(name);
                         }
@@ -124,30 +109,39 @@ void search_load_apps(void) {
         g_dir_close(dir);
     }
     
-    // Sort alphabetically
-    state->app_cache = g_list_sort(state->app_cache, compare_apps);
-    
-    g_print("🔍 Loaded %d applications\n", g_list_length(state->app_cache));
+    app_cache = g_list_sort(app_cache, compare_apps);
+    g_print("🔍 MVC: Loaded %d applications into core cache.\n", g_list_length(app_cache));
 }
 
-void search_free_apps(void) {
-    g_list_free_full(state->app_cache, free_app_entry);
-    state->app_cache = NULL;
+void search_ctrl_cleanup(void) {
+    g_list_free_full(app_cache, free_app_entry);
+    app_cache = NULL;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Search Functions (for compatibility)
-// ═══════════════════════════════════════════════════════════════════════════
+GList* search_ctrl_get_filtered_apps(AppCategory category, const gchar *query) {
+    GList *results = NULL;
+    gchar *lower_query = (query && query[0] != '\0') ? g_utf8_strdown(query, -1) : NULL;
 
-void search_clear_results(void) {
-    // Now handled by window_refresh_grid
-}
+    for (GList *l = app_cache; l != NULL; l = l->next) {
+        AppEntry *app = (AppEntry *)l->data;
 
-void search_perform(const gchar *query) {
-    (void)query;
-    // Now handled by window_refresh_grid
-}
+        // Filter by category
+        if (category != CAT_ALL && app->category != category) {
+            continue;
+        }
 
-void search_init(void) {
-    search_load_apps();
+        // Filter by query
+        if (lower_query) {
+            gchar *lower_name = g_utf8_strdown(app->name, -1);
+            gboolean match = strstr(lower_name, lower_query) != NULL;
+            g_free(lower_name);
+            if (!match) continue;
+        }
+
+        // Add to results
+        results = g_list_append(results, app);
+    }
+
+    g_free(lower_query);
+    return results;
 }

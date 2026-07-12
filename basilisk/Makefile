@@ -5,7 +5,7 @@ LDFLAGS = $(shell pkg-config --libs gtk+-3.0 gio-2.0 cairo) -lm
 
 TARGET = basilisk
 
-SRCS = $(wildcard src/*.c)
+SRCS = $(shell find src -name '*.c')
 OBJS = $(patsubst src/%.c, obj/%.o, $(SRCS))
 
 .PHONY: all clean install
@@ -16,11 +16,9 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
-obj/%.o: src/%.c | obj
+obj/%.o: src/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
-
-obj:
-	mkdir -p obj
 
 clean:
 	rm -rf obj $(TARGET)
