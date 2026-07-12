@@ -474,31 +474,35 @@ static void apply_cmark_ast_to_buffer(cmark_node *root, GtkWidget *textview) {
             if (type == CMARK_NODE_TEXT || type == CMARK_NODE_CODE || type == CMARK_NODE_CODE_BLOCK || type == CMARK_NODE_HTML_INLINE || type == CMARK_NODE_HTML_BLOCK) {
                 const char *lit = cmark_node_get_literal(cur);
                 if (lit) {
-                    GtkTextIter start_insert;
-                    gtk_text_buffer_get_end_iter(buf, &start_insert);
+                    GtkTextIter text_iter;
+                    gtk_text_buffer_get_end_iter(buf, &text_iter);
+                    GtkTextMark *start_mark = gtk_text_buffer_create_mark(buf, NULL, &text_iter, TRUE);
+                    
+                    gtk_text_buffer_insert(buf, &text_iter, lit, -1);
+                    
                     if (type == CMARK_NODE_CODE_BLOCK) {
-                        GtkTextChildAnchor *anchor = gtk_text_buffer_create_child_anchor(buf, &start_insert);
+                        gtk_text_buffer_insert(buf, &text_iter, "\n", -1);
+                        GtkTextChildAnchor *anchor = gtk_text_buffer_create_child_anchor(buf, &text_iter);
                         GtkWidget *btn = gtk_button_new_with_label("📋 نسخ الكود");
                         gtk_style_context_add_class(gtk_widget_get_style_context(btn), "copy-code-btn");
                         g_object_set_data_full(G_OBJECT(btn), "code_text", g_strdup(lit), g_free);
                         g_signal_connect(btn, "clicked", G_CALLBACK(on_copy_code_clicked), g_object_get_data(G_OBJECT(btn), "code_text"));
                         gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(textview), btn, anchor);
                         gtk_widget_show_all(btn);
-                        
-                        gtk_text_buffer_get_end_iter(buf, &start_insert);
-                        gtk_text_buffer_insert(buf, &start_insert, "\n", -1);
-                        gtk_text_buffer_get_end_iter(buf, &start_insert);
+                        gtk_text_buffer_insert(buf, &text_iter, "\n", -1);
                     }
                     
-                    gtk_text_buffer_insert(buf, &start_insert, lit, -1);
+                    GtkTextIter start_tag;
+                    gtk_text_buffer_get_iter_at_mark(buf, &start_tag, start_mark);
                     gtk_text_buffer_get_end_iter(buf, &text_iter);
                     
                     if (type == CMARK_NODE_CODE) {
-                        gtk_text_buffer_apply_tag_by_name(buf, "inline_code", &start_insert, &text_iter);
+                        gtk_text_buffer_apply_tag_by_name(buf, "inline_code", &start_tag, &text_iter);
                     } else if (type == CMARK_NODE_CODE_BLOCK) {
-                        gtk_text_buffer_apply_tag_by_name(buf, "code_block", &start_insert, &text_iter);
-                        gtk_text_buffer_insert(buf, &text_iter, "\n", -1);
+                        gtk_text_buffer_apply_tag_by_name(buf, "code_block", &start_tag, &text_iter);
                     }
+                    
+                    gtk_text_buffer_delete_mark(buf, start_mark);
                 }
             } else if (type == CMARK_NODE_SOFTBREAK) {
                 gtk_text_buffer_insert(buf, &text_iter, " ", -1);
