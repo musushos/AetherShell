@@ -2,6 +2,7 @@
 #include "core/ai_ctrl.h"
 #include <gtk/gtk.h>
 #include <string.h>
+#include <math.h>
 #include <gdk/gdkx.h>
 #include <gdk/gdkwayland.h>
 
@@ -28,7 +29,131 @@ typedef struct {
     gchar *last_user_query;
     gboolean ignore_rest;
     GtkWidget *action_box;
+    GtkWidget *header_canvas;
+    guint anim_timer;
+    gdouble anim_t;
 } AiChatData;
+
+/* ================= VAXP angular-cut drawing helpers =================
+ * GTK3 CSS has no clip-path, so the "cut corner" look from the web
+ * prototype is produced by connecting to a container's "draw" signal
+ * (which fires BEFORE the container's default handler paints its
+ * children, since GtkWidget::draw is RUN_LAST) and painting a cairo
+ * polygon behind the real child widget. The child itself gets a
+ * transparent CSS background so the shape shows through.
+ * ===================================================================*/
+
+static void vaxp_cut_path(cairo_t *cr, double x, double y, double w, double h,
+                           double cut, gboolean tl, gboolean tr, gboolean br, gboolean bl) {
+    cairo_new_path(cr);
+    cairo_move_to(cr, x + (tl ? cut : 0), y);
+    if (tr) { cairo_line_to(cr, x + w - cut, y); cairo_line_to(cr, x + w, y + cut); }
+    else      cairo_line_to(cr, x + w, y);
+    if (br) { cairo_line_to(cr, x + w, y + h - cut); cairo_line_to(cr, x + w - cut, y + h); }
+    else      cairo_line_to(cr, x + w, y + h);
+    if (bl) { cairo_line_to(cr, x + cut, y + h); cairo_line_to(cr, x, y + h - cut); }
+    else      cairo_line_to(cr, x, y + h);
+    cairo_close_path(cr);
+}
+
+static void vaxp_glow_stroke(cairo_t *cr, double r, double g, double b, double alpha) {
+    cairo_push_group(cr);
+    cairo_set_line_width(cr, 4.0);
+    cairo_set_source_rgba(cr, r, g, b, alpha * 0.12);
+    cairo_stroke_preserve(cr);
+    cairo_set_line_width(cr, 1.0);
+    cairo_set_source_rgba(cr, r, g, b, alpha);
+    cairo_stroke(cr);
+    cairo_pop_group_to_source(cr);
+    cairo_paint(cr);
+}
+
+/* AI bubble: dark glass fill, cyan hairline, top-start corner cut. */
+static gboolean vaxp_ai_bubble_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
+    (void)user_data;
+    int w = gtk_widget_get_allocated_width(widget);
+    int h = gtk_widget_get_allocated_height(widget);
+    gboolean rtl = (gtk_widget_get_direction(widget) == GTK_TEXT_DIR_RTL);
+
+    vaxp_cut_path(cr, 0, 0, w, h, 14, !rtl, rtl, FALSE, FALSE);
+    cairo_set_source_rgba(cr, 0.09, 0.10, 0.14, 0.72);
+    cairo_fill_preserve(cr);
+    vaxp_glow_stroke(cr, 0.31, 0.89, 0.81, 0.28);
+    return FALSE; /* let the class handler paint the child (label/textview) on top */
+}
+
+/* User bubble: cyan/violet tinted glass, opposite corner cut. */
+static gboolean vaxp_user_bubble_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
+    (void)user_data;
+    int w = gtk_widget_get_allocated_width(widget);
+    int h = gtk_widget_get_allocated_height(widget);
+    gboolean rtl = (gtk_widget_get_direction(widget) == GTK_TEXT_DIR_RTL);
+
+    vaxp_cut_path(cr, 0, 0, w, h, 14, rtl, !rtl, FALSE, FALSE);
+    cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, w, h);
+    cairo_pattern_add_color_stop_rgba(grad, 0.0, 0.31, 0.89, 0.81, 0.20);
+    cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.61, 0.53, 0.96, 0.18);
+    cairo_set_source(cr, grad);
+    cairo_fill_preserve(cr);
+    cairo_pattern_destroy(grad);
+    vaxp_glow_stroke(cr, 0.31, 0.89, 0.81, 0.32);
+    return FALSE;
+}
+
+/* Entry input shell: angular cut on both trailing corners. */
+static gboolean vaxp_entry_wrap_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
+    (void)user_data;
+    int w = gtk_widget_get_allocated_width(widget);
+    int h = gtk_widget_get_allocated_height(widget);
+    vaxp_cut_path(cr, 0, 0, w, h, 16, TRUE, FALSE, TRUE, FALSE);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.035);
+    cairo_fill_preserve(cr);
+    vaxp_glow_stroke(cr, 1.0, 1.0, 1.0, 0.10);
+    return FALSE;
+}
+
+static void vaxp_hex_ring(cairo_t *cr, double cx, double cy, double radius, double rot,
+                           double r, double g, double b, double alpha, double lw) {
+    cairo_new_path(cr);
+    for (int i = 0; i < 6; i++) {
+        double ang = rot + i * (G_PI / 3.0);
+        double x = cx + radius * cos(ang);
+        double y = cy + radius * sin(ang);
+        if (i == 0) cairo_move_to(cr, x, y); else cairo_line_to(cr, x, y);
+    }
+    cairo_close_path(cr);
+    cairo_set_source_rgba(cr, r, g, b, alpha);
+    cairo_set_line_width(cr, lw);
+    cairo_stroke(cr);
+}
+
+/* Header "core" logo: two counter-rotating hex rings + a pulsing dot,
+ * matching the animated SVG mark from the web prototype. */
+static gboolean vaxp_header_canvas_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
+    AiChatData *data = (AiChatData *)user_data;
+    int w = gtk_widget_get_allocated_width(widget);
+    int h = gtk_widget_get_allocated_height(widget);
+    double cx = w / 2.0, cy = h / 2.0;
+
+    vaxp_hex_ring(cr, cx, cy, w * 0.42, data->anim_t, 0.31, 0.89, 0.81, 0.75, 1.4);
+    vaxp_hex_ring(cr, cx, cy, w * 0.29, -data->anim_t * 1.4, 0.61, 0.53, 0.96, 0.6, 1.1);
+
+    double pulse = (w * 0.09) + (w * 0.03) * sin(data->anim_t * 2.4);
+    cairo_arc(cr, cx, cy, pulse * 1.8, 0, 2 * G_PI);
+    cairo_set_source_rgba(cr, 0.31, 0.89, 0.81, 0.12);
+    cairo_fill(cr);
+    cairo_arc(cr, cx, cy, pulse, 0, 2 * G_PI);
+    cairo_set_source_rgba(cr, 0.31, 0.89, 0.81, 0.95);
+    cairo_fill(cr);
+    return FALSE;
+}
+
+static gboolean vaxp_anim_tick(gpointer user_data) {
+    AiChatData *data = (AiChatData *)user_data;
+    data->anim_t += 0.045;
+    if (data->header_canvas) gtk_widget_queue_draw(data->header_canvas);
+    return TRUE;
+}
 
 static void on_ai_window_realize_disable_decorations(GtkWidget *widget, gpointer user_data) {
     GdkWindow *gdk_window = gtk_widget_get_window(widget);
@@ -97,15 +222,17 @@ static void add_chat_bubble(AiChatData *data, const gchar *text, gboolean is_use
         gtk_widget_set_halign(bubble_box, GTK_ALIGN_END);
         gtk_widget_set_margin_start(bubble_box, 60);
         gtk_style_context_add_class(gtk_widget_get_style_context(bubble_box), "user-bubble");
-        
+        gtk_widget_set_app_paintable(bubble_box, TRUE);
+        g_signal_connect(bubble_box, "draw", G_CALLBACK(vaxp_user_bubble_draw), NULL);
+
         GtkWidget *label = gtk_label_new(text);
         gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
         gtk_label_set_max_width_chars(GTK_LABEL(label), 50);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0);
-        gtk_widget_set_margin_top(label, 10);
-        gtk_widget_set_margin_bottom(label, 10);
-        gtk_widget_set_margin_start(label, 14);
-        gtk_widget_set_margin_end(label, 14);
+        gtk_widget_set_margin_top(label, 12);
+        gtk_widget_set_margin_bottom(label, 12);
+        gtk_widget_set_margin_start(label, 16);
+        gtk_widget_set_margin_end(label, 16);
         
         gtk_box_pack_start(GTK_BOX(bubble_box), label, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(align), bubble_box, FALSE, FALSE, 0);
@@ -113,21 +240,23 @@ static void add_chat_bubble(AiChatData *data, const gchar *text, gboolean is_use
         GtkWidget *bubble = gtk_text_view_new();
         gtk_text_view_set_editable(GTK_TEXT_VIEW(bubble), FALSE);
         gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(bubble), GTK_WRAP_WORD_CHAR);
-        gtk_text_view_set_left_margin(GTK_TEXT_VIEW(bubble), 12);
-        gtk_text_view_set_right_margin(GTK_TEXT_VIEW(bubble), 12);
+        gtk_text_view_set_left_margin(GTK_TEXT_VIEW(bubble), 16);
+        gtk_text_view_set_right_margin(GTK_TEXT_VIEW(bubble), 16);
         gtk_text_view_set_top_margin(GTK_TEXT_VIEW(bubble), 12);
         gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(bubble), 12);
         gtk_widget_set_name(bubble, "ai-textview");
         
         GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(bubble));
-        gtk_text_buffer_create_tag(buf, "code_block", "family", "Monospace", "background", "#2b2b2b", "foreground", "#a9b7c6", "paragraph-background", "#1e1e1e", NULL);
-        gtk_text_buffer_create_tag(buf, "inline_code", "family", "Monospace", "background", "#3c3c3c", "foreground", "#f8c555", NULL);
+        gtk_text_buffer_create_tag(buf, "code_block", "family", "Monospace", "background", "#171a20", "foreground", "#7fe8d6", "paragraph-background", "#0f1116", NULL);
+        gtk_text_buffer_create_tag(buf, "inline_code", "family", "Monospace", "background", "#1c2028", "foreground", "#f2c14e", NULL);
         gtk_text_buffer_create_tag(buf, "bold", "weight", PANGO_WEIGHT_BOLD, NULL);
         
         gtk_widget_set_halign(bubble, GTK_ALIGN_FILL);
         gtk_widget_set_hexpand(bubble, TRUE);
         gtk_widget_set_margin_end(bubble, 60);
         gtk_style_context_add_class(gtk_widget_get_style_context(bubble), "ai-bubble");
+        gtk_widget_set_app_paintable(bubble, TRUE);
+        g_signal_connect(bubble, "draw", G_CALLBACK(vaxp_ai_bubble_draw), NULL);
         gtk_box_pack_start(GTK_BOX(align), bubble, FALSE, FALSE, 0);
         
         data->action_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
@@ -427,6 +556,12 @@ static void on_entry_activate(GtkEntry *entry, gpointer user_data) {
     gtk_entry_set_text(entry, "");
 }
 
+static void on_send_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    AiChatData *data = (AiChatData *)user_data;
+    on_entry_activate(GTK_ENTRY(data->entry), data);
+}
+
 static gboolean on_ai_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
     (void)user_data;
     if (event->keyval == GDK_KEY_Escape) {
@@ -440,6 +575,7 @@ static void on_window_destroy(GtkWidget *widget, gpointer user_data) {
     (void)widget;
     AiChatData *data = (AiChatData *)user_data;
     if (data->type_timer > 0) g_source_remove(data->type_timer);
+    if (data->anim_timer > 0) g_source_remove(data->anim_timer);
     ai_ctrl_cleanup(); // Clean up core backend request if any
     if (data->response) g_free(data->response);
     if (data->extracted_command) g_free(data->extracted_command);
@@ -455,26 +591,32 @@ void view_ai_show(const gchar *initial_query) {
     if (!css_applied) {
         GtkCssProvider *css = gtk_css_provider_new();
         gtk_css_provider_load_from_data(css,
-            "#ai-window { background: rgba(0, 0, 0, 0.300); border-radius: 16px; border: 2px solid rgba(0, 0, 0, 1.0); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }"
-            "#ai-main-box { background: rgba(0, 0, 0, 0.300); }"
-            "#ai-header { background: rgba(0, 0, 0, 0); border-radius: 12px 12px 0 0; padding: 12px 16px; }"
-            ".ai-title { font-size: 22px; font-weight: bold; color: #ffffff; }"
-            ".ai-beta { background: rgba(0, 0, 0, 0.44); color: #ffffff; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }"
-            "#ai-entry { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(0, 0, 0, 1); border-radius: 10px; padding: 14px 16px; color: #ffffff; font-size: 15px; caret-color: rgba(0, 0, 0, 0); }"
-            "#ai-entry:focus { border-color: rgba(0, 0, 0, 0); background: rgba(255, 255, 255, 0.12); }"
-            "#ai-response-scroll { background: rgba(0, 0, 0, 0.3); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); }"
+            "#ai-window { background: rgba(9, 10, 14, 0.72); border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 24px 60px rgba(0,0,0,0.6); }"
+            "#ai-main-box { background: rgba(9, 10, 14, 0.72); }"
+            "#ai-header { background: linear-gradient(rgba(255,255,255,0.03), transparent); border-bottom: 1px solid rgba(255,255,255,0.07); border-radius: 20px 20px 0 0; padding: 14px 18px; }"
+            ".ai-title { font-family: 'Chakra Petch', 'Tajawal', sans-serif; font-size: 17px; font-weight: 700; letter-spacing: 0.5px; color: #eef1f6; }"
+            ".ai-title-accent { color: #4fe3cf; }"
+            ".ai-subtitle { font-family: 'Tajawal', sans-serif; font-size: 11.5px; color: #5c6478; }"
+            ".ai-beta { background: rgba(79,227,207,0.08); color: #4fe3cf; border: 1px solid rgba(79,227,207,0.35); padding: 4px 12px; border-radius: 3px; font-family: 'Chakra Petch', sans-serif; font-size: 10.5px; font-weight: 600; letter-spacing: 1.5px; }"
+            "#ai-entry { background: transparent; border: none; box-shadow: none; padding: 12px 14px; color: #eef1f6; font-family: 'Tajawal', sans-serif; font-size: 14.5px; caret-color: #4fe3cf; }"
+            "#ai-entry-wrap { background: transparent; }"
+            "#ai-send-btn { background: linear-gradient(135deg, #4fe3cf, #9c86f5); border: none; border-radius: 4px; min-width: 34px; min-height: 34px; padding: 0; }"
+            "#ai-send-btn:hover { filter: brightness(1.12); }"
+            "#ai-response-scroll { background: rgba(255,255,255,0.015); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); }"
             "textview.ai-bubble text { background: transparent; }"
-            "textview.ai-bubble { background: rgba(50, 50, 50, 0.8); border-radius: 12px; font-size: 15px; color: #e0e0e0; }"
-            "box.user-bubble { background: rgba(40, 100, 200, 0.8); border-radius: 12px; }"
-            "box.user-bubble label { color: #ffffff; font-size: 15px; }"
-            "#ai-footer { padding: 8px 0; }"
-            "#ai-status { color: #888888; font-size: 12px; }", -1, NULL);
+            "textview.ai-bubble { background: transparent; font-family: 'Tajawal', sans-serif; font-size: 14.5px; color: #eef1f6; }"
+            "box.user-bubble { background: transparent; }"
+            "box.user-bubble label { font-family: 'Tajawal', sans-serif; color: #eef1f6; font-size: 14.5px; }"
+            "#ai-footer { padding: 8px 4px; }"
+            "#ai-status { font-family: 'Chakra Petch', sans-serif; color: #5c6478; font-size: 11.5px; letter-spacing: 0.3px; }"
+            "spinner { color: #9c86f5; }", -1, NULL);
         gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_USER + 100);
         g_object_unref(css);
         css_applied = TRUE;
     }
     
     data->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_widget_set_direction(GTK_WIDGET(data->window), GTK_TEXT_DIR_RTL);
     gtk_window_set_title(GTK_WINDOW(data->window), "VAXP AI");
     gtk_window_set_default_size(GTK_WINDOW(data->window), 650, 480);
     gtk_window_set_position(GTK_WINDOW(data->window), GTK_WIN_POS_CENTER);
@@ -491,15 +633,40 @@ void view_ai_show(const gchar *initial_query) {
     gtk_widget_set_name(main_box, "ai-main-box");
     gtk_container_add(GTK_CONTAINER(data->window), main_box);
     
-    GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 13);
     gtk_widget_set_name(header, "ai-header");
-    GtkWidget *title = gtk_label_new("VAXP AI");
+
+    data->header_canvas = gtk_drawing_area_new();
+    gtk_widget_set_size_request(data->header_canvas, 34, 34);
+    gtk_widget_set_valign(data->header_canvas, GTK_ALIGN_CENTER);
+    gtk_widget_set_app_paintable(data->header_canvas, TRUE);
+    g_signal_connect(data->header_canvas, "draw", G_CALLBACK(vaxp_header_canvas_draw), data);
+
+    GtkWidget *brand_text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    gtk_widget_set_valign(brand_text, GTK_ALIGN_CENTER);
+
+    GtkWidget *title = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(title), "VAXP <span foreground=\"#4fe3cf\">AI</span>");
     gtk_style_context_add_class(gtk_widget_get_style_context(title), "ai-title");
+    gtk_widget_set_halign(title, GTK_ALIGN_START);
+
+    GtkWidget *subtitle = gtk_label_new("متصل بنظام VAXP-OS");
+    gtk_style_context_add_class(gtk_widget_get_style_context(subtitle), "ai-subtitle");
+    gtk_widget_set_halign(subtitle, GTK_ALIGN_START);
+
+    gtk_box_pack_start(GTK_BOX(brand_text), title, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(brand_text), subtitle, FALSE, FALSE, 0);
+
     GtkWidget *beta = gtk_label_new("BETA");
     gtk_style_context_add_class(gtk_widget_get_style_context(beta), "ai-beta");
-    gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
+    gtk_widget_set_valign(beta, GTK_ALIGN_CENTER);
+
+    gtk_box_pack_start(GTK_BOX(header), data->header_canvas, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(header), brand_text, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(header), beta, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(main_box), header, FALSE, FALSE, 0);
+
+    data->anim_timer = g_timeout_add(45, vaxp_anim_tick, data);
     
     GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
     gtk_container_set_border_width(GTK_CONTAINER(content), 16);
@@ -525,18 +692,33 @@ void view_ai_show(const gchar *initial_query) {
     GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_name(footer, "ai-footer");
     data->spinner = gtk_spinner_new();
-    data->status_label = gtk_label_new("Press Enter to ask Vaxp AI...");
+    data->status_label = gtk_label_new("اضغط Enter لسؤال VAI…");
     gtk_widget_set_name(data->status_label, "ai-status");
     gtk_box_pack_start(GTK_BOX(footer), data->spinner, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(footer), data->status_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(content), footer, FALSE, FALSE, 0);
     
+    GtkWidget *entry_wrap = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_name(entry_wrap, "ai-entry-wrap");
+    gtk_widget_set_app_paintable(entry_wrap, TRUE);
+    gtk_container_set_border_width(GTK_CONTAINER(entry_wrap), 5);
+    g_signal_connect(entry_wrap, "draw", G_CALLBACK(vaxp_entry_wrap_draw), NULL);
+
     data->entry = gtk_entry_new();
     gtk_widget_set_name(data->entry, "ai-entry");
-    gtk_entry_set_placeholder_text(GTK_ENTRY(data->entry), "Ask Vaxp AI anything...");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(data->entry), "اسأل VAI عن أي شيء…");
+    gtk_widget_set_hexpand(data->entry, TRUE);
     if (initial_query) gtk_entry_set_text(GTK_ENTRY(data->entry), initial_query);
     g_signal_connect(data->entry, "activate", G_CALLBACK(on_entry_activate), data);
-    gtk_box_pack_start(GTK_BOX(content), data->entry, FALSE, FALSE, 0);
+
+    GtkWidget *send_btn = gtk_button_new_from_icon_name("go-next-symbolic", GTK_ICON_SIZE_BUTTON);
+    gtk_widget_set_name(send_btn, "ai-send-btn");
+    gtk_widget_set_valign(send_btn, GTK_ALIGN_CENTER);
+    g_signal_connect(send_btn, "clicked", G_CALLBACK(on_send_clicked), data);
+
+    gtk_box_pack_start(GTK_BOX(entry_wrap), data->entry, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(entry_wrap), send_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), entry_wrap, FALSE, FALSE, 0);
     
     g_signal_connect(data->window, "key-press-event", G_CALLBACK(on_ai_key_press), data);
     g_signal_connect(data->window, "destroy", G_CALLBACK(on_window_destroy), data);
