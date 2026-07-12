@@ -2,6 +2,9 @@
 #include "core/ai_ctrl.h"
 #include <gtk/gtk.h>
 #include <string.h>
+#include <cmark-gfm.h>
+#include <cmark-gfm-extension_api.h>
+#include <cmark-gfm-core-extensions.h>
 #include <math.h>
 #include <gdk/gdkx.h>
 #include <gdk/gdkwayland.h>
@@ -353,6 +356,12 @@ static void add_chat_bubble(AiChatData *data, const gchar *text, gboolean is_use
         gtk_text_buffer_create_tag(buf, "code_block", "family", "Monospace", "background", "#171a20", "foreground", "#7fe8d6", "paragraph-background", "#0f1116", NULL);
         gtk_text_buffer_create_tag(buf, "inline_code", "family", "Monospace", "background", "#1c2028", "foreground", "#f2c14e", NULL);
         gtk_text_buffer_create_tag(buf, "bold", "weight", PANGO_WEIGHT_BOLD, NULL);
+        gtk_text_buffer_create_tag(buf, "italic", "style", PANGO_STYLE_ITALIC, NULL);
+        gtk_text_buffer_create_tag(buf, "h1", "family", "Chakra Petch", "weight", PANGO_WEIGHT_BOLD, "scale", PANGO_SCALE_XX_LARGE, "foreground", "#4fe3cf", NULL);
+        gtk_text_buffer_create_tag(buf, "h2", "family", "Chakra Petch", "weight", PANGO_WEIGHT_BOLD, "scale", PANGO_SCALE_X_LARGE, "foreground", "#4fe3cf", NULL);
+        gtk_text_buffer_create_tag(buf, "h3", "family", "Chakra Petch", "weight", PANGO_WEIGHT_BOLD, "scale", PANGO_SCALE_LARGE, "foreground", "#4fe3cf", NULL);
+        gtk_text_buffer_create_tag(buf, "h4", "family", "Chakra Petch", "weight", PANGO_WEIGHT_BOLD, "scale", PANGO_SCALE_MEDIUM, "foreground", "#4fe3cf", NULL);
+        gtk_text_buffer_create_tag(buf, "link", "foreground", "#9c86f5", "underline", PANGO_UNDERLINE_SINGLE, NULL);
         
         gtk_widget_set_halign(bubble, GTK_ALIGN_FILL);
         gtk_widget_set_hexpand(bubble, TRUE);
@@ -429,6 +438,127 @@ static void add_thinking_row(AiChatData *data, const gchar *label_text) {
 
 static void fetch_response_hidden(AiChatData *data, const gchar *query);
 
+static void auto_scroll(AiChatData *data);
+
+static void apply_cmark_ast_to_buffer(cmark_node *root, GtkTextBuffer *buf) {
+    cmark_iter *iter = cmark_iter_new(root);
+    cmark_event_type ev_type;
+    
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(buf, &start, &end);
+    gtk_text_buffer_delete(buf, &start, &end);
+    
+    int list_depth = 0;
+    
+    while ((ev_type = cmark_iter_next(iter)) != CMARK_EVENT_DONE) {
+        cmark_node *cur = cmark_iter_get_node(iter);
+        cmark_node_type type = cmark_node_get_type(cur);
+        
+        GtkTextIter text_iter;
+        gtk_text_buffer_get_end_iter(buf, &text_iter);
+        
+        if (ev_type == CMARK_EVENT_ENTER) {
+            if (type == CMARK_NODE_EMPH || type == CMARK_NODE_STRONG || type == CMARK_NODE_HEADING || type == CMARK_NODE_LINK) {
+                GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, &text_iter, TRUE);
+                cmark_node_set_user_data(cur, mark);
+            }
+            
+            if (type == CMARK_NODE_TEXT || type == CMARK_NODE_CODE || type == CMARK_NODE_CODE_BLOCK || type == CMARK_NODE_HTML_INLINE || type == CMARK_NODE_HTML_BLOCK) {
+                const char *lit = cmark_node_get_literal(cur);
+                if (lit) {
+                    GtkTextIter start_insert;
+                    gtk_text_buffer_get_end_iter(buf, &start_insert);
+                    gtk_text_buffer_insert(buf, &text_iter, lit, -1);
+                    
+                    if (type == CMARK_NODE_CODE) {
+                        gtk_text_buffer_apply_tag_by_name(buf, "inline_code", &start_insert, &text_iter);
+                    } else if (type == CMARK_NODE_CODE_BLOCK) {
+                        gtk_text_buffer_apply_tag_by_name(buf, "code_block", &start_insert, &text_iter);
+                        gtk_text_buffer_insert(buf, &text_iter, "\n", -1);
+                    }
+                }
+            } else if (type == CMARK_NODE_SOFTBREAK) {
+                gtk_text_buffer_insert(buf, &text_iter, " ", -1);
+            } else if (type == CMARK_NODE_LINEBREAK) {
+                gtk_text_buffer_insert(buf, &text_iter, "\n", -1);
+            } else if (type == CMARK_NODE_ITEM) {
+                gtk_text_buffer_insert(buf, &text_iter, "• ", -1);
+            } else if (type == CMARK_NODE_LIST) {
+                list_depth++;
+            }
+        } else if (ev_type == CMARK_EVENT_EXIT) {
+            GtkTextMark *start_mark = (GtkTextMark *)cmark_node_get_user_data(cur);
+            if (start_mark) {
+                GtkTextIter start_tag;
+                gtk_text_buffer_get_iter_at_mark(buf, &start_tag, start_mark);
+                gtk_text_buffer_get_end_iter(buf, &text_iter);
+                
+                if (type == CMARK_NODE_EMPH) {
+                    gtk_text_buffer_apply_tag_by_name(buf, "italic", &start_tag, &text_iter);
+                } else if (type == CMARK_NODE_STRONG) {
+                    gtk_text_buffer_apply_tag_by_name(buf, "bold", &start_tag, &text_iter);
+                } else if (type == CMARK_NODE_HEADING) {
+                    int level = cmark_node_get_heading_level(cur);
+                    if (level > 4) level = 4;
+                    gchar *tag_name = g_strdup_printf("h%d", level);
+                    gtk_text_buffer_apply_tag_by_name(buf, tag_name, &start_tag, &text_iter);
+                    g_free(tag_name);
+                } else if (type == CMARK_NODE_LINK) {
+                    gtk_text_buffer_apply_tag_by_name(buf, "link", &start_tag, &text_iter);
+                }
+                
+                gtk_text_buffer_delete_mark(buf, start_mark);
+            }
+            
+            if (type == CMARK_NODE_PARAGRAPH || type == CMARK_NODE_HEADING) {
+                gtk_text_buffer_insert(buf, &text_iter, "\n\n", -1);
+            } else if (type == CMARK_NODE_LIST) {
+                list_depth--;
+                if (list_depth == 0) gtk_text_buffer_insert(buf, &text_iter, "\n", -1);
+            } else if (type == CMARK_NODE_ITEM) {
+                gtk_text_buffer_insert(buf, &text_iter, "\n", -1);
+            }
+        }
+    }
+    
+    gtk_text_buffer_get_end_iter(buf, &end);
+    start = end;
+    while (gtk_text_iter_backward_char(&start)) {
+        if (!g_unichar_isspace(gtk_text_iter_get_char(&start))) {
+            gtk_text_iter_forward_char(&start);
+            break;
+        }
+    }
+    if (gtk_text_iter_compare(&start, &end) < 0) {
+        gtk_text_buffer_delete(buf, &start, &end);
+    }
+    
+    cmark_iter_free(iter);
+}
+
+static void render_markdown_final(AiChatData *data) {
+    if (!data->response || strlen(data->response) == 0 || !data->current_ai_textview) return;
+    
+    cmark_gfm_core_extensions_ensure_registered();
+    cmark_parser *parser = cmark_parser_new(CMARK_OPT_DEFAULT | CMARK_OPT_UNSAFE);
+    cmark_syntax_extension *ext = cmark_find_syntax_extension("table");
+    if (ext) cmark_parser_attach_syntax_extension(parser, ext);
+    ext = cmark_find_syntax_extension("strikethrough");
+    if (ext) cmark_parser_attach_syntax_extension(parser, ext);
+    ext = cmark_find_syntax_extension("autolink");
+    if (ext) cmark_parser_attach_syntax_extension(parser, ext);
+    
+    cmark_parser_feed(parser, data->response, strlen(data->response));
+    cmark_node *doc = cmark_parser_finish(parser);
+    
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->current_ai_textview));
+    apply_cmark_ast_to_buffer(doc, buf);
+    
+    cmark_node_free(doc);
+    cmark_parser_free(parser);
+    auto_scroll(data);
+}
+
 static gboolean typewriter_tick(gpointer user_data) {
     AiChatData *data = (AiChatData *)user_data;
     
@@ -444,6 +574,7 @@ static gboolean typewriter_tick(gpointer user_data) {
     if (!p || *p == '\0') {
         if (data->is_done) {
             data->type_timer = 0;
+            render_markdown_final(data);
             return FALSE;
         }
         return TRUE;

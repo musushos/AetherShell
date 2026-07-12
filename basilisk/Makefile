@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2 -Iinclude \
-         $(shell pkg-config --cflags gtk+-3.0 gio-2.0 cairo)
-LDFLAGS = $(shell pkg-config --libs gtk+-3.0 gio-2.0 cairo) -lm
+         $(shell pkg-config --cflags gtk+-3.0 gio-2.0 cairo libcmark-gfm)
+LDFLAGS = $(shell pkg-config --libs gtk+-3.0 gio-2.0 cairo libcmark-gfm) -lcmark-gfm-extensions -lm
 
 TARGET = basilisk
 
