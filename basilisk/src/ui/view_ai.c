@@ -19,19 +19,39 @@ typedef struct {
     gboolean in_bold;
     gboolean skip_until_newline;
     gboolean is_done;
+    gboolean in_execute_block;
+    gchar *extracted_command;
+    GtkWidget *action_box;
 } AiChatData;
 
 static void on_ai_window_realize_disable_decorations(GtkWidget *widget, gpointer user_data) {
-    GdkWindow *gdk_window;
-    (void)user_data;
-    gdk_window = gtk_widget_get_window(widget);
-    if (!gdk_window) return;
-    if (GDK_IS_WAYLAND_WINDOW(gdk_window)) {
-        gdk_wayland_window_announce_csd(gdk_window);
-    } else {
+    GdkWindow *gdk_window = gtk_widget_get_window(widget);
+    if (gdk_window) {
         gdk_window_set_decorations(gdk_window, 0);
-        gdk_window_set_functions(gdk_window, 0);
     }
+}
+
+static void on_execute_clicked(GtkButton *btn, gpointer user_data) {
+    const gchar *cmd = (const gchar *)user_data;
+    if (cmd) {
+        gchar *term_cmd = g_strdup_printf("x-terminal-emulator -e bash -c \"%s; echo ''; read -p 'Press Enter to close...'\"", cmd);
+        g_spawn_command_line_async(term_cmd, NULL);
+        g_free(term_cmd);
+    }
+    gtk_widget_destroy(GTK_WIDGET(btn));
+}
+
+static void show_execute_button(AiChatData *data, const gchar *cmd) {
+    if (!cmd || strlen(cmd) == 0) return;
+    gchar *label = g_strdup_printf("🚀 Execute Command: %s", cmd);
+    GtkWidget *btn = gtk_button_new_with_label(label);
+    g_free(label);
+    
+    g_object_set_data_full(G_OBJECT(btn), "cmd", g_strdup(cmd), g_free);
+    g_signal_connect(btn, "clicked", G_CALLBACK(on_execute_clicked), g_object_get_data(G_OBJECT(btn), "cmd"));
+    
+    gtk_box_pack_start(GTK_BOX(data->action_box), btn, FALSE, FALSE, 0);
+    gtk_widget_show_all(data->action_box);
 }
 
 static gboolean typewriter_tick(gpointer user_data) {
@@ -45,6 +65,39 @@ static gboolean typewriter_tick(gpointer user_data) {
             return FALSE;
         }
         return TRUE;
+    }
+
+    if (data->in_execute_block) {
+        if (!data->is_done && strlen(p) < 10) return TRUE;
+        if (g_str_has_prefix(p, "</execute>")) {
+            data->in_execute_block = FALSE;
+            data->char_index += 10;
+            show_execute_button(data, data->extracted_command);
+            return TRUE;
+        }
+        
+        gchar *next = g_utf8_next_char(p);
+        gint len = next - p;
+        gchar *chunk = g_strndup(p, len);
+        if (data->extracted_command) {
+            gchar *tmp = g_strconcat(data->extracted_command, chunk, NULL);
+            g_free(data->extracted_command);
+            data->extracted_command = tmp;
+        } else {
+            data->extracted_command = g_strdup(chunk);
+        }
+        g_free(chunk);
+        data->char_index += len;
+        return TRUE;
+    }
+
+    if (*p == '<') {
+        if (!data->is_done && strlen(p) < 10) return TRUE;
+        if (g_str_has_prefix(p, "<execute>")) {
+            data->in_execute_block = TRUE;
+            data->char_index += 9;
+            return TRUE;
+        }
     }
 
     if (*p == '`') {
@@ -152,7 +205,33 @@ static void fetch_response(AiChatData *data, const gchar *query) {
     if (data->response) { g_free(data->response); data->response = NULL; }
     if (data->type_timer > 0) { g_source_remove(data->type_timer); data->type_timer = 0; }
     
-    gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view)), "", -1);
+    if (data->extracted_command) { g_free(data->extracted_command); data->extracted_command = NULL; }
+    data->in_execute_block = FALSE;
+    
+    GList *children = gtk_container_get_children(GTK_CONTAINER(data->action_box));
+    for (GList *iter = children; iter != NULL; iter = g_list_next(iter)) {
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    }
+    g_list_free(children);
+    
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(buf, &end);
+    
+    if (gtk_text_iter_get_offset(&end) > 0) {
+        gtk_text_buffer_insert(buf, &end, "\n\n", -1);
+    }
+    
+    gtk_text_buffer_insert_with_tags_by_name(buf, &end, "أنت:\n", -1, "user_name", NULL);
+    gtk_text_buffer_insert_with_tags_by_name(buf, &end, query, -1, "user_msg", NULL);
+    
+    gtk_text_buffer_insert(buf, &end, "\n\n", -1);
+    gtk_text_buffer_insert_with_tags_by_name(buf, &end, "VAXP AI:\n", -1, "ai_name", NULL);
+    
+    GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, &end, FALSE);
+    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(data->text_view), mark, 0, TRUE, 0, 1);
+    gtk_text_buffer_delete_mark(buf, mark);
+    
     gtk_label_set_text(GTK_LABEL(data->status_label), "Admiral is thinking...");
     gtk_spinner_start(GTK_SPINNER(data->spinner));
     
@@ -273,6 +352,17 @@ void view_ai_show(const gchar *initial_query) {
     gtk_text_buffer_create_tag(buf, "bold", 
                                "weight", PANGO_WEIGHT_BOLD, 
                                NULL);
+    gtk_text_buffer_create_tag(buf, "user_name", 
+                               "weight", PANGO_WEIGHT_BOLD, 
+                               "foreground", "#4da6ff", 
+                               NULL);
+    gtk_text_buffer_create_tag(buf, "ai_name", 
+                               "weight", PANGO_WEIGHT_BOLD, 
+                               "foreground", "#ff4da6", 
+                               NULL);
+    gtk_text_buffer_create_tag(buf, "user_msg", 
+                               "foreground", "#ffffff", 
+                               NULL);
                                
     gtk_text_view_set_editable(GTK_TEXT_VIEW(data->text_view), FALSE);
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(data->text_view), GTK_WRAP_WORD_CHAR);
@@ -282,6 +372,9 @@ void view_ai_show(const gchar *initial_query) {
     gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(data->text_view), 12);
     gtk_container_add(GTK_CONTAINER(scroll), data->text_view);
     gtk_box_pack_start(GTK_BOX(content), scroll, TRUE, TRUE, 0);
+    
+    data->action_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_box_pack_start(GTK_BOX(content), data->action_box, FALSE, FALSE, 0);
     
     GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_name(footer, "ai-footer");
