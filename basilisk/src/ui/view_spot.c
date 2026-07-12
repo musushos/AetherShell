@@ -6,7 +6,9 @@
 #include <gdk/gdkx.h>
 #include <gdk/gdkwayland.h>
 
-extern void cmd_ctrl_execute_all(const gchar *query); // Defined in main.c
+extern void cmd_ctrl_execute_all(const gchar *query);
+extern gchar *cmd_ctrl_exec_math(const gchar *expr);
+extern GList *cmd_ctrl_exec_file_search(const gchar *query);
 
 typedef enum {
     SPOT_MODE_SEARCH = 0,
@@ -29,6 +31,10 @@ static struct {
     GtkWidget     *window;
     GtkWidget     *canvas;
     GtkWidget     *entry;
+    GtkWidget     *revealer;
+    GtkWidget     *listbox;
+    guint          debounce_timer_id;
+    gchar         *debounce_query;
     SpotMode       mode;
     gboolean       visible;
     int            hover;
@@ -274,6 +280,12 @@ static gboolean on_key(GtkWidget *w, GdkEventKey *ev, gpointer d) {
         view_spot_hide();
         return TRUE;
     }
+    if (ev->keyval == GDK_KEY_Down) {
+        if (gtk_revealer_get_reveal_child(GTK_REVEALER(S.revealer))) {
+            gtk_widget_grab_focus(S.listbox);
+            return TRUE;
+        }
+    }
     if (ev->keyval == GDK_KEY_Return || ev->keyval == GDK_KEY_KP_Enter) {
         const gchar *t = gtk_entry_get_text(GTK_ENTRY(S.entry));
         gchar *formatted_query = NULL;
@@ -296,7 +308,6 @@ static gboolean on_key(GtkWidget *w, GdkEventKey *ev, gpointer d) {
                     break;
             }
         } else {
-            // empty enter just toggles mode without query
             if (S.mode == SPOT_MODE_APPS) formatted_query = g_strdup("app:");
             else if (S.mode == SPOT_MODE_AI) formatted_query = g_strdup("ai:");
         }
@@ -315,9 +326,134 @@ static gboolean on_key(GtkWidget *w, GdkEventKey *ev, gpointer d) {
     return FALSE;
 }
 
+static void on_row_activated(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
+    (void)box; (void)user_data;
+    gchar *res = (gchar *)g_object_get_data(G_OBJECT(row), "result");
+    if (res) {
+        GtkClipboard *cb = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+        gtk_clipboard_set_text(cb, res, -1);
+        view_spot_hide();
+        return;
+    }
+    
+    gchar *path = (gchar *)g_object_get_data(G_OBJECT(row), "path");
+    if (path) {
+        gchar *uri = g_filename_to_uri(path, NULL, NULL);
+        if (uri) {
+            g_app_info_launch_default_for_uri(uri, NULL, NULL);
+            g_free(uri);
+        }
+        view_spot_hide();
+        return;
+    }
+}
+
+static gboolean on_debounce_timeout(gpointer d) {
+    (void)d;
+    S.debounce_timer_id = 0;
+    if (!S.debounce_query) return FALSE;
+    
+    GList *results = cmd_ctrl_exec_file_search(S.debounce_query);
+    
+    GList *children = gtk_container_get_children(GTK_CONTAINER(S.listbox));
+    for (GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+    
+    if (results) {
+        int count = 0;
+        for (GList *l = results; l != NULL && count < 10; l = l->next) {
+            gchar *path = (gchar *)l->data;
+            gchar *basename = g_path_get_basename(path);
+            
+            GtkWidget *row = gtk_list_box_row_new();
+            GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+            GtkWidget *lbl_name = gtk_label_new(basename);
+            gtk_widget_set_halign(lbl_name, GTK_ALIGN_START);
+            GtkWidget *lbl_path = gtk_label_new(path);
+            gtk_widget_set_halign(lbl_path, GTK_ALIGN_START);
+            
+            PangoAttrList *attrs = pango_attr_list_new();
+            pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+            gtk_label_set_attributes(GTK_LABEL(lbl_name), attrs);
+            pango_attr_list_unref(attrs);
+            
+            PangoAttrList *attrs2 = pango_attr_list_new();
+            pango_attr_list_insert(attrs2, pango_attr_scale_new(0.8));
+            pango_attr_list_insert(attrs2, pango_attr_foreground_new(40000, 40000, 40000));
+            gtk_label_set_attributes(GTK_LABEL(lbl_path), attrs2);
+            pango_attr_list_unref(attrs2);
+            
+            gtk_box_pack_start(GTK_BOX(box), lbl_name, FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(box), lbl_path, FALSE, FALSE, 0);
+            gtk_container_add(GTK_CONTAINER(row), box);
+            
+            g_object_set_data_full(G_OBJECT(row), "path", g_strdup(path), g_free);
+            gtk_list_box_insert(GTK_LIST_BOX(S.listbox), row, -1);
+            g_free(basename);
+            count++;
+        }
+        g_list_free_full(results, g_free);
+        gtk_widget_show_all(S.listbox);
+        gtk_revealer_set_reveal_child(GTK_REVEALER(S.revealer), TRUE);
+    } else {
+        gtk_revealer_set_reveal_child(GTK_REVEALER(S.revealer), FALSE);
+    }
+    
+    g_free(S.debounce_query);
+    S.debounce_query = NULL;
+    return FALSE;
+}
+
 static void on_entry_changed(GtkEditable *e, gpointer d) {
     (void)e; (void)d;
     reset_blink_timer();
+    
+    const gchar *text = gtk_entry_get_text(GTK_ENTRY(S.entry));
+    if (!text || text[0] == '\0') {
+        gtk_revealer_set_reveal_child(GTK_REVEALER(S.revealer), FALSE);
+        return;
+    }
+    
+    if (g_str_has_prefix(text, "!=") || g_str_has_prefix(text, "!:")) {
+        gchar *expr = g_strdup(text + 2);
+        gchar *res = cmd_ctrl_exec_math(expr);
+        
+        GList *children = gtk_container_get_children(GTK_CONTAINER(S.listbox));
+        for (GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+        
+        if (res && strlen(res) > 0) {
+            GtkWidget *row = gtk_list_box_row_new();
+            GtkWidget *lbl = gtk_label_new(res);
+            gtk_widget_set_halign(lbl, GTK_ALIGN_START);
+            
+            PangoAttrList *attrs = pango_attr_list_new();
+            pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+            pango_attr_list_insert(attrs, pango_attr_scale_new(1.2));
+            gtk_label_set_attributes(GTK_LABEL(lbl), attrs);
+            pango_attr_list_unref(attrs);
+            
+            gtk_container_add(GTK_CONTAINER(row), lbl);
+            gtk_list_box_insert(GTK_LIST_BOX(S.listbox), row, -1);
+            gtk_widget_show_all(S.listbox);
+            gtk_revealer_set_reveal_child(GTK_REVEALER(S.revealer), TRUE);
+            
+            g_object_set_data_full(G_OBJECT(row), "result", g_strdup(res), g_free);
+        } else {
+            gtk_revealer_set_reveal_child(GTK_REVEALER(S.revealer), FALSE);
+        }
+        g_free(res);
+        g_free(expr);
+    } else if (g_str_has_prefix(text, "vafile:")) {
+        if (S.debounce_timer_id > 0) g_source_remove(S.debounce_timer_id);
+        if (S.debounce_query) g_free(S.debounce_query);
+        S.debounce_query = g_strdup(text + 7);
+        S.debounce_timer_id = g_timeout_add(400, on_debounce_timeout, NULL);
+    } else {
+        gtk_revealer_set_reveal_child(GTK_REVEALER(S.revealer), FALSE);
+    }
 }
 
 static void on_realize(GtkWidget *w, gpointer d) {
@@ -338,28 +474,55 @@ static gboolean on_window_delete(GtkWidget *widget, GdkEvent *event, gpointer da
     return TRUE;
 }
 
+static gboolean on_window_draw(GtkWidget *w, cairo_t *cr, gpointer d) {
+    (void)w; (void)d;
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    return FALSE;
+}
+
 void view_spot_init(void) {
     S.mode    = SPOT_MODE_SEARCH;
     S.hover   = -1;
     S.visible = FALSE;
+    S.debounce_timer_id = 0;
+    S.debounce_query = NULL;
+
+    static gboolean css_applied = FALSE;
+    if (!css_applied) {
+        GtkCssProvider *css = gtk_css_provider_new();
+        gtk_css_provider_load_from_data(css,
+            "#spot-window { background: transparent; }"
+            "#spot-listbox { background: rgba(0, 0, 0, 0.5); border-radius: 12px; padding: 4px; border: 1px solid rgba(255,255,255,0.1); }"
+            "#spot-listbox row { color: white; padding: 8px 12px; border-radius: 8px; }"
+            "#spot-listbox row:selected { background: rgba(255, 255, 255, 0.15); }", -1, NULL);
+        gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_USER + 100);
+        g_object_unref(css);
+        css_applied = TRUE;
+    }
 
     S.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_widget_set_name(S.window, "spot-window");
     gtk_window_set_title(GTK_WINDOW(S.window), "Basilisk Spotlight");
     gtk_window_set_decorated(GTK_WINDOW(S.window), FALSE);
     gtk_window_set_skip_taskbar_hint(GTK_WINDOW(S.window), TRUE);
     gtk_window_set_skip_pager_hint(GTK_WINDOW(S.window), TRUE);
     gtk_window_set_type_hint(GTK_WINDOW(S.window), GDK_WINDOW_TYPE_HINT_DIALOG);
     gtk_window_set_keep_above(GTK_WINDOW(S.window), TRUE);
-    gtk_window_set_default_size(GTK_WINDOW(S.window), SP_WIDTH, SP_HEIGHT);
     gtk_window_set_resizable(GTK_WINDOW(S.window), FALSE);
     gtk_widget_set_app_paintable(S.window, TRUE);
+    g_signal_connect(S.window, "draw", G_CALLBACK(on_window_draw), NULL);
 
     GdkScreen *scr = gtk_widget_get_screen(S.window);
     GdkVisual *vis = gdk_screen_get_rgba_visual(scr);
     if (vis) gtk_widget_set_visual(S.window, vis);
 
+    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_container_add(GTK_CONTAINER(S.window), main_box);
+
     GtkWidget *fixed = gtk_fixed_new();
-    gtk_container_add(GTK_CONTAINER(S.window), fixed);
+    gtk_widget_set_size_request(fixed, SP_WIDTH, SP_HEIGHT);
+    gtk_box_pack_start(GTK_BOX(main_box), fixed, FALSE, FALSE, 0);
 
     S.canvas = gtk_drawing_area_new();
     gtk_widget_set_size_request(S.canvas, SP_WIDTH, SP_HEIGHT);
@@ -370,6 +533,33 @@ void view_spot_init(void) {
     S.entry = gtk_entry_new();
     gtk_widget_set_size_request(S.entry, 1, 1);
     gtk_fixed_put(GTK_FIXED(fixed), S.entry, -1000, -1000);
+
+    GtkWidget *rev_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_box_pack_start(GTK_BOX(main_box), rev_hbox, TRUE, TRUE, 0);
+
+    GtkWidget *pad_left = gtk_fixed_new();
+    gtk_widget_set_size_request(pad_left, SP_PAD/2, 1);
+    gtk_box_pack_start(GTK_BOX(rev_hbox), pad_left, FALSE, FALSE, 0);
+
+    S.revealer = gtk_revealer_new();
+    gtk_revealer_set_transition_type(GTK_REVEALER(S.revealer), GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN);
+    gtk_revealer_set_transition_duration(GTK_REVEALER(S.revealer), 150);
+    gtk_box_pack_start(GTK_BOX(rev_hbox), S.revealer, TRUE, TRUE, 0);
+
+    GtkWidget *pad_right = gtk_fixed_new();
+    gtk_widget_set_size_request(pad_right, SP_WIDTH - (SP_PAD/2 + SP_SEARCH_W), 1);
+    gtk_box_pack_start(GTK_BOX(rev_hbox), pad_right, FALSE, FALSE, 0);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_size_request(scroll, -1, 240);
+    gtk_widget_set_margin_bottom(scroll, 10);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_container_add(GTK_CONTAINER(S.revealer), scroll);
+
+    S.listbox = gtk_list_box_new();
+    gtk_widget_set_name(S.listbox, "spot-listbox");
+    g_signal_connect(S.listbox, "row-activated", G_CALLBACK(on_row_activated), NULL);
+    gtk_container_add(GTK_CONTAINER(scroll), S.listbox);
 
     g_signal_connect(S.canvas, "draw", G_CALLBACK(on_draw), NULL);
     g_signal_connect(S.canvas, "button-press-event", G_CALLBACK(on_click), NULL);
@@ -400,6 +590,7 @@ void view_spot_show(void) {
     }
 
     gtk_entry_set_text(GTK_ENTRY(S.entry), "");
+    gtk_revealer_set_reveal_child(GTK_REVEALER(S.revealer), FALSE);
     S.mode  = SPOT_MODE_SEARCH;
     S.hover = -1;
 

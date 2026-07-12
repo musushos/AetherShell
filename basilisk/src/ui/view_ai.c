@@ -14,6 +14,11 @@ typedef struct {
     gchar *response;
     gint char_index;
     guint type_timer;
+    gboolean in_code_block;
+    gboolean in_inline_code;
+    gboolean in_bold;
+    gboolean skip_until_newline;
+    gboolean is_done;
 } AiChatData;
 
 static void on_ai_window_realize_disable_decorations(GtkWidget *widget, gpointer user_data) {
@@ -31,21 +36,73 @@ static void on_ai_window_realize_disable_decorations(GtkWidget *widget, gpointer
 
 static gboolean typewriter_tick(gpointer user_data) {
     AiChatData *data = (AiChatData *)user_data;
-    if (!data->response || data->response[data->char_index] == '\0') {
-        data->type_timer = 0;
-        gtk_label_set_text(GTK_LABEL(data->status_label), "Done.");
-        return FALSE;
+    gchar *p = data->response ? data->response + data->char_index : NULL;
+    
+    if (!p || *p == '\0') {
+        if (data->is_done) {
+            data->type_timer = 0;
+            gtk_label_set_text(GTK_LABEL(data->status_label), "Done.");
+            return FALSE;
+        }
+        return TRUE;
+    }
+
+    if (*p == '`') {
+        if (p[1] == '`' && p[2] == '`') {
+            data->in_code_block = !data->in_code_block;
+            data->char_index += 3;
+            if (data->in_code_block) {
+                data->skip_until_newline = TRUE;
+            }
+            return TRUE;
+        } else if ((p[1] == '\0' || (p[1] == '`' && p[2] == '\0')) && !data->is_done) {
+            return TRUE;
+        } else {
+            data->in_inline_code = !data->in_inline_code;
+            data->char_index += 1;
+            return TRUE;
+        }
     }
     
-    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
-    GtkTextIter end;
-    gtk_text_buffer_get_end_iter(buf, &end);
+    if (*p == '*' && p[1] == '*') {
+        data->in_bold = !data->in_bold;
+        data->char_index += 2;
+        return TRUE;
+    } else if (*p == '*' && p[1] == '\0' && !data->is_done) {
+        return TRUE;
+    }
     
-    gchar *p = data->response + data->char_index;
+    if (data->skip_until_newline) {
+        if (*p == '\n') {
+            data->skip_until_newline = FALSE;
+            data->char_index += 1;
+        } else {
+            data->char_index += 1;
+        }
+        return TRUE;
+    }
+
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
     gchar *next = g_utf8_next_char(p);
     gint len = next - p;
-    
+
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(buf, &end);
     gtk_text_buffer_insert(buf, &end, p, len);
+    
+    GtkTextIter start_insert = end;
+    gtk_text_iter_backward_chars(&start_insert, 1);
+    
+    if (data->in_code_block) {
+        gtk_text_buffer_apply_tag_by_name(buf, "code_block", &start_insert, &end);
+    }
+    if (data->in_inline_code) {
+        gtk_text_buffer_apply_tag_by_name(buf, "inline_code", &start_insert, &end);
+    }
+    if (data->in_bold) {
+        gtk_text_buffer_apply_tag_by_name(buf, "bold", &start_insert, &end);
+    }
+    
     data->char_index += len;
     
     GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, &end, FALSE);
@@ -58,6 +115,11 @@ static gboolean typewriter_tick(gpointer user_data) {
 static void start_typewriter(AiChatData *data) {
     if (data->type_timer > 0) g_source_remove(data->type_timer);
     data->char_index = 0;
+    data->in_code_block = FALSE;
+    data->in_inline_code = FALSE;
+    data->in_bold = FALSE;
+    data->skip_until_newline = FALSE;
+    data->is_done = FALSE;
     gtk_label_set_text(GTK_LABEL(data->status_label), "Typing...");
     data->type_timer = g_timeout_add(10, typewriter_tick, data);
 }
@@ -74,12 +136,13 @@ static void on_ai_response_chunk(const gchar *chunk, gboolean is_done, gpointer 
         }
     }
     if (is_done) {
+        data->is_done = TRUE;
         gtk_spinner_stop(GTK_SPINNER(data->spinner));
-        if (data->response) {
-            start_typewriter(data);
-        } else {
+        if (!data->response) {
             gtk_label_set_text(GTK_LABEL(data->status_label), "No response.");
         }
+    } else if (data->type_timer == 0 && data->response) {
+        start_typewriter(data);
     }
 }
 
@@ -132,11 +195,11 @@ void view_ai_show(const gchar *initial_query) {
     if (!css_applied) {
         GtkCssProvider *css = gtk_css_provider_new();
         gtk_css_provider_load_from_data(css,
-            "#ai-window { background: rgba(0, 0, 0, 0.300); border-radius: 16px; border: 2px solid #000000ff; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }"
+            "#ai-window { background: rgba(0, 0, 0, 0.300); border-radius: 16px; border: 2px solid rgba(0, 0, 0, 1.0); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }"
             "#ai-main-box { background: rgba(0, 0, 0, 0.300); }"
             "#ai-header { background: rgba(0, 0, 0, 0); border-radius: 12px 12px 0 0; padding: 12px 16px; }"
-            ".ai-title { font-size: 22px; font-weight: bold; color: #ffffffff; }"
-            ".ai-beta { background: rgba(0, 0, 0, 0.44); color: #ffffffff; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }"
+            ".ai-title { font-size: 22px; font-weight: bold; color: #ffffff; }"
+            ".ai-beta { background: rgba(0, 0, 0, 0.44); color: #ffffff; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }"
             "#ai-entry { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(0, 0, 0, 1); border-radius: 10px; padding: 14px 16px; color: #ffffff; font-size: 15px; caret-color: rgba(0, 0, 0, 0); }"
             "#ai-entry:focus { border-color: rgba(0, 0, 0, 0); background: rgba(255, 255, 255, 0.12); }"
             "#ai-response-scroll { background: rgba(0, 0, 0, 0.3); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); }"
@@ -194,6 +257,23 @@ void view_ai_show(const gchar *initial_query) {
     
     data->text_view = gtk_text_view_new();
     gtk_widget_set_name(data->text_view, "ai-textview");
+    
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->text_view));
+    gtk_text_buffer_create_tag(buf, "code_block", 
+                               "family", "Monospace", 
+                               "background", "#2b2b2b", 
+                               "foreground", "#a9b7c6", 
+                               "paragraph-background", "#1e1e1e", 
+                               NULL);
+    gtk_text_buffer_create_tag(buf, "inline_code", 
+                               "family", "Monospace", 
+                               "background", "#3c3c3c", 
+                               "foreground", "#f8c555", 
+                               NULL);
+    gtk_text_buffer_create_tag(buf, "bold", 
+                               "weight", PANGO_WEIGHT_BOLD, 
+                               NULL);
+                               
     gtk_text_view_set_editable(GTK_TEXT_VIEW(data->text_view), FALSE);
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(data->text_view), GTK_WRAP_WORD_CHAR);
     gtk_text_view_set_left_margin(GTK_TEXT_VIEW(data->text_view), 16);

@@ -33,14 +33,20 @@ void cmd_ctrl_execute_all(const gchar *query) {
     switch (type) {
         case CMD_TYPE_MATH: {
             gchar *result = cmd_ctrl_exec_math(payload);
-            view_dialog_show_math(payload, result);
+            GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+            gtk_clipboard_set_text(clipboard, result, -1);
             g_free(result);
             break;
         }
         case CMD_TYPE_FILE: {
             GList *results = cmd_ctrl_exec_file_search(payload);
-            if (results) {
-                view_dialog_show_file_search(results);
+            if (results && results->data) {
+                gchar *path = (gchar *)results->data;
+                gchar *uri = g_filename_to_uri(path, NULL, NULL);
+                if (uri) {
+                    g_app_info_launch_default_for_uri(uri, NULL, NULL);
+                    g_free(uri);
+                }
                 g_list_free_full(results, g_free);
             }
             break;
