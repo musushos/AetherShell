@@ -440,7 +440,15 @@ static void fetch_response_hidden(AiChatData *data, const gchar *query);
 
 static void auto_scroll(AiChatData *data);
 
-static void apply_cmark_ast_to_buffer(cmark_node *root, GtkTextBuffer *buf) {
+static void on_copy_code_clicked(GtkButton *btn, gpointer user_data) {
+    const gchar *code = (const gchar *)user_data;
+    GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+    gtk_clipboard_set_text(clipboard, code, -1);
+    gtk_button_set_label(btn, "✅ تم النسخ");
+}
+
+static void apply_cmark_ast_to_buffer(cmark_node *root, GtkWidget *textview) {
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(textview));
     cmark_iter *iter = cmark_iter_new(root);
     cmark_event_type ev_type;
     
@@ -468,7 +476,22 @@ static void apply_cmark_ast_to_buffer(cmark_node *root, GtkTextBuffer *buf) {
                 if (lit) {
                     GtkTextIter start_insert;
                     gtk_text_buffer_get_end_iter(buf, &start_insert);
-                    gtk_text_buffer_insert(buf, &text_iter, lit, -1);
+                    if (type == CMARK_NODE_CODE_BLOCK) {
+                        GtkTextChildAnchor *anchor = gtk_text_buffer_create_child_anchor(buf, &start_insert);
+                        GtkWidget *btn = gtk_button_new_with_label("📋 نسخ الكود");
+                        gtk_style_context_add_class(gtk_widget_get_style_context(btn), "copy-code-btn");
+                        g_object_set_data_full(G_OBJECT(btn), "code_text", g_strdup(lit), g_free);
+                        g_signal_connect(btn, "clicked", G_CALLBACK(on_copy_code_clicked), g_object_get_data(G_OBJECT(btn), "code_text"));
+                        gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(textview), btn, anchor);
+                        gtk_widget_show_all(btn);
+                        
+                        gtk_text_buffer_get_end_iter(buf, &start_insert);
+                        gtk_text_buffer_insert(buf, &start_insert, "\n", -1);
+                        gtk_text_buffer_get_end_iter(buf, &start_insert);
+                    }
+                    
+                    gtk_text_buffer_insert(buf, &start_insert, lit, -1);
+                    gtk_text_buffer_get_end_iter(buf, &text_iter);
                     
                     if (type == CMARK_NODE_CODE) {
                         gtk_text_buffer_apply_tag_by_name(buf, "inline_code", &start_insert, &text_iter);
@@ -551,8 +574,7 @@ static void render_markdown_final(AiChatData *data) {
     cmark_parser_feed(parser, data->response, strlen(data->response));
     cmark_node *doc = cmark_parser_finish(parser);
     
-    GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->current_ai_textview));
-    apply_cmark_ast_to_buffer(doc, buf);
+    apply_cmark_ast_to_buffer(doc, data->current_ai_textview);
     
     cmark_node_free(doc);
     cmark_parser_free(parser);
@@ -913,7 +935,9 @@ void view_ai_show(const gchar *initial_query) {
             "#ai-perm-btn-accept { background: linear-gradient(135deg, #4fe3cf, #2b8f83); color: #07080c; border: none; border-radius: 8px; padding: 8px 24px; font-family: 'Tajawal', sans-serif; font-weight: bold; margin: 10px; }"
             "#ai-perm-btn-accept:hover { background: linear-gradient(135deg, #6aece0, #4fe3cf); }"
             "#ai-perm-btn-cancel { background: rgba(255,255,255,0.05); color: #eef1f6; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 24px; font-family: 'Tajawal', sans-serif; margin: 10px; }"
-            "#ai-perm-btn-cancel:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }", -1, NULL);
+            "#ai-perm-btn-cancel:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }"
+            ".copy-code-btn { background: rgba(79, 227, 207, 0.15); color: #4fe3cf; border: 1px solid rgba(79, 227, 207, 0.4); border-radius: 4px; padding: 2px 8px; font-family: 'Tajawal', sans-serif; font-size: 11px; margin-bottom: 4px; }"
+            ".copy-code-btn:hover { background: rgba(79, 227, 207, 0.3); }", -1, NULL);
         gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_USER + 100);
         g_object_unref(css);
         css_applied = TRUE;
