@@ -5,8 +5,7 @@
 
 #include "wallpaper.h"
 #include "desktop_config.h"
-#include "video_wallpaper.h"
-#include <glib/gstdio.h>
+#include <gio/gio.h>
 #include <string.h>
 #include <gtk-layer-shell.h>
 #include <math.h>
@@ -20,7 +19,6 @@ int screen_h = 0;
 
 static GdkPixbuf *wallpaper_pixbuf = NULL;
 static char *current_wallpaper_path = NULL;
-static gboolean monitor_signal_handlers_connected = FALSE;
 static GFileMonitor *wallpaper_monitor = NULL;
 
 
@@ -32,10 +30,7 @@ static guint tick_callback_id = 0;
 static gint64 transition_start_time = 0;
 static void load_wallpaper(const char *path);
 static GdkMonitor *get_target_monitor(GdkDisplay *display);
-static void update_desktop_geometry(void);
-static void on_monitors_changed(GdkDisplay *display, gpointer user_data);
-static void on_main_window_realize(GtkWidget *widget, gpointer user_data);
-static gboolean refresh_desktop_after_show(gpointer user_data);
+
 
 static void on_wallpaper_file_changed(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type, gpointer user_data) {
     (void)monitor;
@@ -182,23 +177,7 @@ void load_saved_wallpaper(void) {
         return;
     }
 
-    if (is_video_file(path)) {
-        /* Stop any static wallpaper rendering first */
-        if (wallpaper_pixbuf) {
-            g_object_unref(wallpaper_pixbuf);
-            wallpaper_pixbuf = NULL;
-        }
-        if (prev_wallpaper_pixbuf) {
-            g_object_unref(prev_wallpaper_pixbuf);
-            prev_wallpaper_pixbuf = NULL;
-        }
-        video_wallpaper_load(path);
-    } else {
-        /* Switching back from video to image */
-        if (video_wallpaper_is_active())
-            video_wallpaper_stop();
-        load_wallpaper(path);
-    }
+    load_wallpaper(path);
 
     g_free(path);
 }
@@ -253,35 +232,13 @@ static void update_desktop_geometry(void) {
     if (current_wallpaper_path) load_wallpaper(current_wallpaper_path);
 }
 
-static void on_monitors_changed(GdkDisplay *display, gpointer user_data) {
-    (void)display;
-    (void)user_data;
-    update_desktop_geometry();
-}
 
-static void on_main_window_realize(GtkWidget *widget, gpointer user_data) {
-    (void)widget;
-    (void)user_data;
-    update_desktop_geometry();
-    g_idle_add(refresh_desktop_after_show, NULL);
-}
-
-static gboolean refresh_desktop_after_show(gpointer user_data) {
-    (void)user_data;
-    update_desktop_geometry();
-    if (icon_layout) gtk_widget_queue_draw(icon_layout);
-    return G_SOURCE_REMOVE;
-}
 
 gboolean on_layout_draw_bg(GtkWidget *widget, cairo_t *cr, gpointer data) {
     (void)widget;
     (void)data;
 
     /* If a video wallpaper is active, skip static image entirely to save CPU */
-    if (video_wallpaper_is_active()) {
-        return FALSE;
-    }
-
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);

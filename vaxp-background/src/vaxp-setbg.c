@@ -14,9 +14,7 @@ static char *get_vaxp_main_config_path(void) {
     return get_vaxp_config_path("desktop.vaxp");
 }
 
-static char *get_vaxp_cache_path(const char *filename) {
-    return g_build_filename(g_get_user_cache_dir(), "vaxp-thumbnails", filename, NULL);
-}
+
 
 static void ensure_config_dir(void) {
     char *dir = g_build_filename(g_get_user_config_dir(), "vaxp", "desktop", NULL);
@@ -29,18 +27,6 @@ static void ensure_config_dir(void) {
 static gboolean is_image_file(const char *name) {
     const char *exts[] = { ".jpg", ".jpeg", ".png", ".bmp", ".gif",
                            ".webp", ".tiff", ".svg", NULL };
-    char *lower = g_ascii_strdown(name, -1);
-    gboolean ok = FALSE;
-    for (int i = 0; exts[i]; i++)
-        if (g_str_has_suffix(lower, exts[i])) { ok = TRUE; break; }
-    g_free(lower);
-    return ok;
-}
-
-static gboolean is_video_file_ext(const char *name) {
-    const char *exts[] = { ".mp4", ".mkv", ".webm", ".avi", ".mov",
-                           ".flv", ".wmv", ".m4v", ".ogv", ".ts",
-                           ".m2ts", ".mpg", ".mpeg", ".3gp", NULL };
     char *lower = g_ascii_strdown(name, -1);
     gboolean ok = FALSE;
     for (int i = 0; exts[i]; i++)
@@ -91,23 +77,6 @@ static int get_saved_anim(void) {
     return id;
 }
 
-static int get_saved_volume(void) {
-    int vol = 0;
-    char *main_config = get_vaxp_main_config_path();
-    GKeyFile *kf = g_key_file_new();
-    if (g_key_file_load_from_file(kf, main_config, G_KEY_FILE_NONE, NULL)) {
-        GError *err = NULL;
-        int v = g_key_file_get_integer(kf, "Desktop", "VideoVolume", &err);
-        if (!err) vol = v;
-        else g_error_free(err);
-    }
-    g_key_file_free(kf);
-    g_free(main_config);
-    if (vol < 0) vol = 0;
-    if (vol > 100) vol = 100;
-    return vol;
-}
-
 /* ── Image loader (lazy, idle-based) ───────────────────────────── */
 
 typedef struct { GtkWidget *flow; char *dir_path; GDir *dir; } DirLoader;
@@ -156,76 +125,10 @@ static void add_images_from_dir(const char *dir_path, GtkWidget *flow) {
     g_idle_add(load_next_image, loader);
 }
 
-/* ── Video loader (synchronous — less files expected) ──────────── */
-
-static gboolean load_next_video(gpointer user_data) {
-    DirLoader *loader = user_data;
-    const char *fname;
-
-    /* Only 1 video per tick since ffmpegthumbnailer takes time */
-    fname = g_dir_read_name(loader->dir);
-    if (!fname) {
-        g_dir_close(loader->dir);
-        g_free(loader->dir_path);
-        g_free(loader);
-        return G_SOURCE_REMOVE;
-    }
-    if (!is_video_file_ext(fname)) return G_SOURCE_CONTINUE;
-
-    char *full_path = g_strdup_printf("%s/%s", loader->dir_path, fname);
-
-    char *cache_dir = g_build_filename(g_get_user_cache_dir(), "vaxp-thumbnails", NULL);
-    g_mkdir_with_parents(cache_dir, 0755);
-    g_free(cache_dir);
-    char *hash = g_compute_checksum_for_string(G_CHECKSUM_MD5, full_path, -1);
-    char *thumb_name = g_strdup_printf("%s.png", hash);
-    char *thumb_path = get_vaxp_cache_path(thumb_name);
-    g_free(thumb_name);
-    g_free(hash);
-
-    if (!g_file_test(thumb_path, G_FILE_TEST_EXISTS)) {
-        char *cmd = g_strdup_printf("ffmpegthumbnailer -i \"%s\" -o \"%s\" -s 180 -t 5%% -q 5 -c png >/dev/null 2>&1",
-                                    full_path, thumb_path);
-        system(cmd);
-        g_free(cmd);
-    }
-
-    GdkPixbuf *thumb = gdk_pixbuf_new_from_file_at_scale(thumb_path, 180, 110, FALSE, NULL);
-    GtkWidget *img = thumb
-        ? gtk_image_new_from_pixbuf(thumb)
-        : gtk_image_new_from_icon_name("video-x-generic", GTK_ICON_SIZE_DIALOG);
-    
-    if (thumb) g_object_unref(thumb);
-    if (!thumb) gtk_image_set_pixel_size(GTK_IMAGE(img), 80);
-
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-    gtk_box_pack_start(GTK_BOX(vbox), img, FALSE, FALSE, 0);
-    GtkWidget *lbl = gtk_label_new(fname);
-    gtk_label_set_max_width_chars(GTK_LABEL(lbl), 22);
-    gtk_label_set_ellipsize(GTK_LABEL(lbl), PANGO_ELLIPSIZE_END);
-    gtk_box_pack_start(GTK_BOX(vbox), lbl, FALSE, FALSE, 0);
-    
-    g_object_set_data_full(G_OBJECT(vbox), "wallpaper-path", full_path, g_free);
-    gtk_flow_box_insert(GTK_FLOW_BOX(loader->flow), vbox, -1);
-    gtk_widget_show_all(vbox);
-
-    g_free(thumb_path);
-    return G_SOURCE_CONTINUE;
-}
-
-static void add_videos_from_dir(const char *dir_path, GtkWidget *flow) {
-    GDir *dir = g_dir_open(dir_path, 0, NULL);
-    if (!dir) return;
-    DirLoader *loader = g_new(DirLoader, 1);
-    loader->flow     = flow;
-    loader->dir_path = g_strdup(dir_path);
-    loader->dir      = dir;
-    g_idle_add(load_next_video, loader);
-}
 
 /* ── Browse-folder button ──────────────────────────────────────── */
 
-typedef struct { GtkWidget *img_flow; GtkWidget *vid_flow; } BrowseData;
+typedef struct { GtkWidget *img_flow; } BrowseData;
 
 static void on_browse_folder_clicked(GtkButton *btn, gpointer user_data) {
     BrowseData *bd = user_data;
@@ -244,7 +147,6 @@ static void on_browse_folder_clicked(GtkButton *btn, gpointer user_data) {
         char *folder = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
         if (folder) {
             add_images_from_dir(folder, bd->img_flow);
-            add_videos_from_dir(folder, bd->vid_flow);
 
             char **existing_dirs = NULL;
             gsize num_dirs = 0;
@@ -288,19 +190,6 @@ static void on_wallpaper_selected(GtkFlowBox *box, GtkFlowBoxChild *child,
     if (path) set_wallpaper(path);
 }
 
-/* Volume scale changed → persist */
-static void on_volume_changed(GtkRange *range, gpointer user_data) {
-    (void)user_data;
-    int vol = (int)gtk_range_get_value(range);
-    ensure_config_dir();
-    char *main_config = get_vaxp_main_config_path();
-    GKeyFile *kf = g_key_file_new();
-    g_key_file_load_from_file(kf, main_config, G_KEY_FILE_NONE, NULL);
-    g_key_file_set_integer(kf, "Desktop", "VideoVolume", vol);
-    g_key_file_save_to_file(kf, main_config, NULL);
-    g_key_file_free(kf);
-    g_free(main_config);
-}
 
 /* ── main ──────────────────────────────────────────────────────── */
 
@@ -389,51 +278,14 @@ int main(int argc, char *argv[]) {
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), img_scroll,
                              gtk_label_new("🖼  Images"));
 
-    /* ── Tab 2: Videos ── */
-    GtkWidget *vid_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    gtk_container_set_border_width(GTK_CONTAINER(vid_vbox), 6);
-
-    /* Volume row */
-    GtkWidget *vol_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    GtkWidget *vol_lbl = gtk_label_new("🔊 Volume:");
-    GtkWidget *vol_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL,
-                                                    0, 100, 1);
-    gtk_range_set_value(GTK_RANGE(vol_scale), get_saved_volume());
-    gtk_widget_set_hexpand(vol_scale, TRUE);
-    gtk_scale_set_value_pos(GTK_SCALE(vol_scale), GTK_POS_RIGHT);
-    g_signal_connect(vol_scale, "value-changed", G_CALLBACK(on_volume_changed), NULL);
-    gtk_box_pack_start(GTK_BOX(vol_row), vol_lbl,   FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(vol_row), vol_scale, TRUE,  TRUE,  0);
-    gtk_box_pack_start(GTK_BOX(vid_vbox), vol_row, FALSE, FALSE, 0);
-
-    GtkWidget *vid_scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(vid_scroll),
-                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_widget_set_vexpand(vid_scroll, TRUE);
-
-    GtkWidget *vid_flow = gtk_flow_box_new();
-    gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(vid_flow), 4);
-    gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(vid_flow), 2);
-    gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(vid_flow), GTK_SELECTION_SINGLE);
-    gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(vid_flow), 8);
-    gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(vid_flow), 8);
-    gtk_widget_set_margin_start(vid_flow, 4);
-    gtk_widget_set_margin_end(vid_flow, 4);
-    gtk_container_add(GTK_CONTAINER(vid_scroll), vid_flow);
-    gtk_box_pack_start(GTK_BOX(vid_vbox), vid_scroll, TRUE, TRUE, 0);
-
-    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), vid_vbox,
-                             gtk_label_new("🎬 Videos"));
 
     /* ── Wire browse button to both flows ── */
     BrowseData *bd = g_new(BrowseData, 1);
     bd->img_flow = img_flow;
-    bd->vid_flow = vid_flow;
     g_signal_connect(browse_btn, "clicked", G_CALLBACK(on_browse_folder_clicked), bd);
 
     /* ── Selection signals ── */
     g_signal_connect(img_flow, "child-activated", G_CALLBACK(on_wallpaper_selected), NULL);
-    g_signal_connect(vid_flow, "child-activated", G_CALLBACK(on_wallpaper_selected), NULL);
 
     /* ── Populate images ── */
     add_images_from_dir(WALLPAPER_DIR, img_flow);
@@ -447,7 +299,6 @@ int main(int argc, char *argv[]) {
                 for (gsize i = 0; i < num_dirs; i++) {
                     if (strlen(dirs[i]) > 1 && dirs[i][0] == '/') {
                         add_images_from_dir(dirs[i], img_flow);
-                        add_videos_from_dir(dirs[i], vid_flow);
                     }
                 }
                 g_strfreev(dirs);
@@ -457,19 +308,11 @@ int main(int argc, char *argv[]) {
         g_free(main_config);
     }
 
-    /* Also scan default video dirs */
-    const char *home = g_get_home_dir();
-    char *vid_home = g_strdup_printf("%s/Videos", home);
-    add_videos_from_dir(vid_home, vid_flow);
-    g_free(vid_home);
 
     gtk_widget_show_all(main_window);
 
     if (gtk_dialog_run(GTK_DIALOG(main_window)) == GTK_RESPONSE_ACCEPT) {
-        /* Check which tab is active */
-        int tab = gtk_notebook_get_current_page(GTK_NOTEBOOK(notebook));
-        GtkWidget *active_flow = (tab == 1) ? vid_flow : img_flow;
-        GList *selected = gtk_flow_box_get_selected_children(GTK_FLOW_BOX(active_flow));
+        GList *selected = gtk_flow_box_get_selected_children(GTK_FLOW_BOX(img_flow));
         if (selected) {
             GtkFlowBoxChild *child = GTK_FLOW_BOX_CHILD(selected->data);
             GtkWidget *box = gtk_bin_get_child(GTK_BIN(child));
