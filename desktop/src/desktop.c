@@ -8,6 +8,7 @@
 #include <malloc.h>
 #include "icons.h"
 #include "selection.h"
+#include "wallpaper.h"
 
 #include "widgets_manager.h"
 #include <gtk-layer-shell.h>
@@ -101,16 +102,7 @@ static void on_main_window_realize(GtkWidget *widget, gpointer user_data) {
     g_idle_add(refresh_desktop_after_show, NULL);
 }
 
-static gboolean on_layout_draw_bg(GtkWidget *widget, cairo_t *cr, gpointer data) {
-    (void)widget;
-    (void)data;
 
-    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    cairo_paint(cr);
-    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-
-    return FALSE;
-}
 
 void init_main_window(void) {
     GdkVisual *visual;
@@ -301,6 +293,9 @@ static void build_desktop_ui(void) {
     setup_drag_dest();
     setup_layout_events();
     apply_desktop_css();
+
+    init_wallpaper_monitor();
+    load_saved_wallpaper();
 
     load_all_widgets(icon_layout);
     refresh_icons();

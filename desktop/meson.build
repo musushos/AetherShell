@@ -21,13 +21,24 @@ srcs = [
   'src/icons.c',
   'src/menu.c',
   'src/selection.c',
-  'src/widgets_manager.c'
+  'src/widgets_manager.c',
+  'src/wallpaper.c'
 ]
 
 executable('desktop',
   srcs,
   include_directories : inc,
   dependencies : deps,
+  install : true)
+
+# vaxp-setbg tool
+setbg_srcs = [
+  'src/vaxp-setbg.c'
+]
+executable('vaxp-setbg',
+  setbg_srcs,
+  include_directories : inc,
+  dependencies : [gtk_dep, gio_dep],
   install : true)
 
 # Compile Widgets

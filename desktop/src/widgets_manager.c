@@ -341,7 +341,10 @@ void load_all_widgets(GtkWidget *layout) {
     char *wdir = get_widgets_dir();
     g_mkdir_with_parents(wdir, 0755);
     dir = g_dir_open(wdir, 0, NULL);
-    if (!dir) return;
+    if (!dir) {
+        g_free(wdir);
+        return;
+    }
 
     ensure_widget_registry();
     desktop_api.layout_container = layout;
@@ -380,7 +383,10 @@ void reload_widgets(void) {
     char *wdir = get_widgets_dir();
     g_mkdir_with_parents(wdir, 0755);
     dir = g_dir_open(wdir, 0, NULL);
-    if (!dir) return;
+    if (!dir) {
+        g_free(wdir);
+        return;
+    }
 
     ensure_widget_registry();
     desktop_api.layout_container = icon_layout;
@@ -635,8 +641,8 @@ static void show_edit_widgets_dialog(GtkWidget *parent_widget) {
             rows = g_list_append(rows, row_box);
         }
         g_dir_close(dir);
-        g_free(wdir);
     }
+    g_free(wdir);
 
     if (widget_count == 0) {
         GtkWidget *empty = gtk_label_new("No widgets found in ~/.config/vaxp/desktop/widgets/");
