@@ -1,24 +1,6 @@
 /*
  * video_wallpaper.c
- * Video wallpaper engine using libmpv's SOFTWARE render API.
- *
- * Architecture (SW render — no OpenGL/EGL required):
- *
- *   mpv thread
- *     └─ on_mpv_update() → g_idle_add(on_render_idle)
- *
- *   GTK main thread
- *     ├─ on_render_idle()
- *     │    mpv renders frame → g_framebuf (BGRX, 32-bit/pixel)
- *     │    gtk_widget_queue_draw(icon_layout)
- *     │
- *     └─ on_layout_draw_bg()  [in wallpaper.c, calls video_wallpaper_draw()]
- *          cairo_image_surface from g_framebuf → cairo_paint()
- *
- * Why SW over OpenGL:
- *   GtkGLArea inside a gtk-layer-shell BACKGROUND window has known
- *   EGL/Wayland compositing issues. SW render is simpler, portable,
- *   and plenty fast enough for a looping wallpaper video.
+ * Video wallpaper engine using libmpv's OpenGL render API in GtkGLArea.
  */
 
 #include "video_wallpaper.h"
@@ -26,85 +8,143 @@
 
 #ifdef HAVE_MPV
 #include <mpv/client.h>
-#include <mpv/render.h>
-#include <cairo/cairo.h>
+#include <mpv/render_gl.h>
+#include <epoxy/gl.h>
+#include <epoxy/egl.h>
 #include <string.h>
 #include <stdio.h>
 #include <locale.h>
-
-
+#include <gdk/gdkwayland.h>
+#include <malloc.h>
 
 /* ── Module-private state ───────────────────────────────────────── */
+#include "wallpaper.h"
+#include "layer_manager.h"
+
 static mpv_handle         *g_mpv      = NULL;
 static mpv_render_context *g_mpv_ctx  = NULL;
-static GtkWidget          *g_layout   = NULL;   /* icon_layout ref    */
+static GtkWidget          *g_gl_area  = NULL;
 static gboolean            g_active   = FALSE;
-static char               *g_cur_path = NULL;   /* dedup reloads      */
+static char               *g_cur_path = NULL;
+static volatile gint       g_pending  = 0;
 
-/* SW frame buffer — BGRX 32-bit/pixel, matches CAIRO_FORMAT_RGB24  */
-static uint8_t *g_framebuf   = NULL;
-static int      g_framebuf_w = 0;
-static int      g_framebuf_h = 0;
-static gboolean g_frame_ready = FALSE;  /* TRUE once first frame rendered */
+extern GtkWidget *icon_layout;
 
-/* Atomic: mpv thread sets 1, idle callback clears it               */
-static volatile gint g_pending = 0;
+static int read_saved_volume(void);
 
-/* ── Idle: render one mpv frame to g_framebuf (main thread) ─────── */
-static gboolean on_render_idle(gpointer user_data)
-{
-    (void)user_data;
+static void *get_proc_address_mpv(void *ctx, const char *name) {
+    (void)ctx;
+    return (void *)epoxy_eglGetProcAddress(name);
+}
 
-    g_atomic_int_set(&g_pending, 0);
-
-    if (!g_mpv_ctx || !g_active || !g_layout) return G_SOURCE_REMOVE;
-
-    int w = gtk_widget_get_allocated_width(g_layout);
-    int h = gtk_widget_get_allocated_height(g_layout);
-    if (w <= 0 || h <= 0) return G_SOURCE_REMOVE;
-
-    /* Resize frame buffer if dimensions changed */
-    if (w != g_framebuf_w || h != g_framebuf_h || !g_framebuf) {
-        g_free(g_framebuf);
-        g_framebuf   = (uint8_t *)g_malloc(w * h * 4);
-        g_framebuf_w = w;
-        g_framebuf_h = h;
-        g_frame_ready = FALSE;
-        memset(g_framebuf, 0, (size_t)w * h * 4);
-    }
-
-    int    size[2] = { w, h };
-    size_t stride  = (size_t)w * 4;
-
-    mpv_render_param params[] = {
-        { MPV_RENDER_PARAM_SW_SIZE,    size         },
-        { MPV_RENDER_PARAM_SW_FORMAT,  "bgr0"       }, /* BGRX = CAIRO_FORMAT_RGB24 on LE */
-        { MPV_RENDER_PARAM_SW_STRIDE,  &stride      },
-        { MPV_RENDER_PARAM_SW_POINTER, g_framebuf   },
-        { MPV_RENDER_PARAM_INVALID,    NULL          }
-    };
-
-    int ret = mpv_render_context_render(g_mpv_ctx, params);
-    if (ret < 0) {
-        g_warning("[VideoWallpaper] SW render error: %d", ret);
+static gboolean do_update_in_main_thread(gpointer data) {
+    (void)data;
+    
+    if (!g_mpv_ctx || !g_gl_area || !g_active) {
+        g_atomic_int_set(&g_pending, 0);
         return G_SOURCE_REMOVE;
     }
 
-    g_frame_ready = TRUE;
-    gtk_widget_queue_draw(g_layout);
+    uint64_t flags = mpv_render_context_update(g_mpv_ctx);
+    if (flags & MPV_RENDER_UPDATE_FRAME) {
+        gtk_widget_queue_draw(g_gl_area);
+    }
+    
+    g_atomic_int_set(&g_pending, 0);
     return G_SOURCE_REMOVE;
 }
 
 /* ── mpv update callback (mpv thread → schedule idle) ────────────── */
-static void on_mpv_update(void *ctx)
-{
+static void on_mpv_update(void *ctx) {
     (void)ctx;
-    /* Only check if a new video frame is available */
-    uint64_t flags = mpv_render_context_update(g_mpv_ctx);
-    if (!(flags & MPV_RENDER_UPDATE_FRAME)) return;
+    if (!g_mpv_ctx || !g_gl_area || !g_active) return;
+    
+    if (g_atomic_int_compare_and_exchange(&g_pending, 0, 1)) {
+        g_idle_add(do_update_in_main_thread, NULL);
+    }
+}
 
-    if (g_atomic_int_compare_and_exchange(&g_pending, 0, 1))
-        g_idle_add(on_render_idle, NULL);
+static void on_gl_area_realize(GtkWidget *widget, gpointer user_data) {
+    (void)user_data;
+    gtk_gl_area_make_current(GTK_GL_AREA(widget));
+    if (gtk_gl_area_get_error(GTK_GL_AREA(widget)) != NULL) {
+        g_warning("[VideoWallpaper] GtkGLArea failed to realize");
+        return;
+    }
+
+    const char *renderer = (const char *)glGetString(GL_RENDERER);
+    g_print("[VideoWallpaper] OpenGL Renderer: %s\n", renderer ? renderer : "Unknown");
+
+    if (g_mpv && !g_mpv_ctx) {
+        mpv_opengl_init_params gl_init_params = {
+            .get_proc_address = get_proc_address_mpv,
+        };
+        
+        GdkDisplay *display = gdk_display_get_default();
+        struct wl_display *wl_disp = NULL;
+        if (GDK_IS_WAYLAND_DISPLAY(display)) {
+            wl_disp = gdk_wayland_display_get_wl_display(display);
+        }
+
+        mpv_render_param params[] = {
+            {MPV_RENDER_PARAM_API_TYPE, MPV_RENDER_API_TYPE_OPENGL},
+            {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params},
+            {MPV_RENDER_PARAM_WL_DISPLAY, wl_disp},
+            {MPV_RENDER_PARAM_INVALID, NULL}
+        };
+
+        if (mpv_render_context_create(&g_mpv_ctx, g_mpv, params) == 0) {
+            mpv_render_context_set_update_callback(g_mpv_ctx, on_mpv_update, NULL);
+            g_print("[VideoWallpaper] OpenGL render context ready\n");
+        }
+    }
+}
+
+static void on_gl_area_unrealize(GtkWidget *widget, gpointer user_data) {
+    (void)widget;
+    (void)user_data;
+    if (g_mpv_ctx) {
+        gtk_gl_area_make_current(GTK_GL_AREA(widget));
+        mpv_render_context_free(g_mpv_ctx);
+        g_mpv_ctx = NULL;
+    }
+}
+
+static gboolean on_gl_area_render(GtkGLArea *area, GdkGLContext *context, gpointer user_data) {
+    (void)context;
+    (void)user_data;
+
+    if (!g_mpv_ctx || !g_active) {
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        return TRUE;
+    }
+
+    int w = gtk_widget_get_allocated_width(GTK_WIDGET(area));
+    int h = gtk_widget_get_allocated_height(GTK_WIDGET(area));
+    int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
+    w *= scale;
+    h *= scale;
+
+    int fbo = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
+
+    mpv_opengl_fbo mpfbo = {
+        .fbo = fbo,
+        .w = w,
+        .h = h,
+        .internal_format = 0,
+    };
+    int flip_y = 1;
+
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_OPENGL_FBO, &mpfbo},
+        {MPV_RENDER_PARAM_FLIP_Y, &flip_y},
+        {MPV_RENDER_PARAM_INVALID, NULL}
+    };
+
+    mpv_render_context_render(g_mpv_ctx, params);
+    return TRUE;
 }
 
 /* ── Read saved volume ────────────────────────────────────────────── */
@@ -142,98 +182,89 @@ gboolean is_video_file(const char *path)
     return ok;
 }
 
-/*
- * video_wallpaper_init:
- *   Initialises the mpv handle and SW render context.
- *   @icon_layout: the GtkLayout used as the desktop canvas; we store
- *   a reference so we can call gtk_widget_queue_draw() from the idle.
- *
- *   Returns TRUE on success, FALSE on failure.
- *   No widget hierarchy changes are made — SW render hooks into the
- *   existing Cairo draw pipeline via video_wallpaper_draw().
- */
-gboolean video_wallpaper_init(GtkWidget *icon_layout)
-{
-    /* libmpv requires LC_NUMERIC="C" */
+gboolean video_wallpaper_init(GtkWidget *window) {
+    (void)window;
     setlocale(LC_NUMERIC, "C");
-
-    g_mpv = mpv_create();
-    if (!g_mpv) {
-        g_warning("[VideoWallpaper] mpv_create() failed");
-        return FALSE;
-    }
-
-    /* Core options */
-    mpv_set_option_string(g_mpv, "vo",            "libmpv");
-    mpv_set_option_string(g_mpv, "loop",          "inf");
-    mpv_set_option_string(g_mpv, "really-quiet",  "yes");
-    mpv_set_option_string(g_mpv, "no-audio-display", "yes");
-
-    char vol_str[16];
-    snprintf(vol_str, sizeof(vol_str), "%d", read_saved_volume());
-    mpv_set_option_string(g_mpv, "volume", vol_str);
-
-    if (mpv_initialize(g_mpv) < 0) {
-        g_warning("[VideoWallpaper] mpv_initialize() failed");
-        mpv_destroy(g_mpv);
-        g_mpv = NULL;
-        return FALSE;
-    }
-
-    /* SW render context — no OpenGL/EGL needed */
-    mpv_render_param params[] = {
-        { MPV_RENDER_PARAM_API_TYPE, MPV_RENDER_API_TYPE_SW },
-        { MPV_RENDER_PARAM_INVALID,  NULL                   }
-    };
-
-    if (mpv_render_context_create(&g_mpv_ctx, g_mpv, params) < 0) {
-        g_warning("[VideoWallpaper] mpv_render_context_create() failed");
-        mpv_destroy(g_mpv);
-        g_mpv = NULL;
-        return FALSE;
-    }
-
-    mpv_render_context_set_update_callback(g_mpv_ctx, on_mpv_update, NULL);
-
-    g_layout = icon_layout;
-
-    g_print("[VideoWallpaper] SW render context ready\n");
     return TRUE;
 }
 
 void video_wallpaper_load(const char *path)
 {
-    if (!g_mpv || !path || !*path) return;
+    if (!path || !*path) return;
 
-    /* Skip if same file already playing */
     if (g_active && g_cur_path && g_strcmp0(g_cur_path, path) == 0)
         return;
 
     g_active = TRUE;
-    g_frame_ready = FALSE;
     g_free(g_cur_path);
     g_cur_path = g_strdup(path);
 
+    /* Ensure GtkGLArea exists */
+    if (!g_gl_area) {
+        g_gl_area = gtk_gl_area_new();
+        gtk_gl_area_set_has_alpha(GTK_GL_AREA(g_gl_area), FALSE);
+        gtk_widget_set_hexpand(g_gl_area, TRUE);
+        gtk_widget_set_vexpand(g_gl_area, TRUE);
+
+        g_signal_connect(g_gl_area, "realize", G_CALLBACK(on_gl_area_realize), NULL);
+        g_signal_connect(g_gl_area, "unrealize", G_CALLBACK(on_gl_area_unrealize), NULL);
+        g_signal_connect(g_gl_area, "render", G_CALLBACK(on_gl_area_render), NULL);
+    }
+
+    /* Ensure mpv is initialized FIRST before realizing the widget */
+    if (!g_mpv) {
+        setlocale(LC_NUMERIC, "C");
+        g_mpv = mpv_create();
+        if (g_mpv) {
+            mpv_set_option_string(g_mpv, "hwdec", "auto-safe");
+            mpv_set_option_string(g_mpv, "gpu-context", "wayland");
+            mpv_set_option_string(g_mpv, "vo", "libmpv");
+            mpv_set_option_string(g_mpv, "loop", "inf");
+            mpv_set_option_string(g_mpv, "really-quiet", "yes");
+            mpv_set_option_string(g_mpv, "no-audio-display", "yes");
+            char vol_str[16];
+            snprintf(vol_str, sizeof(vol_str), "%d", read_saved_volume());
+            mpv_set_option_string(g_mpv, "volume", vol_str);
+
+            mpv_initialize(g_mpv);
+        }
+    }
+
+    layer_manager_show_video(g_gl_area);
+
+
+
     const char *cmd[] = { "loadfile", path, "replace", NULL };
-    mpv_command(g_mpv, cmd);
+    if (g_mpv) {
+        mpv_command(g_mpv, cmd);
+    }
 
     g_print("[VideoWallpaper] Loaded: %s\n", path);
 }
 
 void video_wallpaper_stop(void)
 {
-    if (!g_mpv) return;
-
+    if (!g_active) return;
     g_active = FALSE;
-    g_frame_ready = FALSE;
+
     g_free(g_cur_path);
     g_cur_path = NULL;
 
-    const char *cmd[] = { "stop", NULL };
-    mpv_command(g_mpv, cmd);
+    /* 1. Destroy GtkGLArea and render context FIRST! 
+       libmpv requires the render context (g_mpv_ctx) to be freed BEFORE the mpv handle (g_mpv) is destroyed.
+       layer_manager_show_image destroys the video widget, triggering on_gl_area_unrealize, which frees g_mpv_ctx. */
+    layer_manager_show_image(wallpaper_get_widget());
+    g_gl_area = NULL;
 
-    if (g_layout) gtk_widget_queue_draw(g_layout);
-    g_print("[VideoWallpaper] Stopped\n");
+    /* 2. Now safely destroy the mpv handle */
+    if (g_mpv) {
+        mpv_terminate_destroy(g_mpv);
+        g_mpv = NULL;
+    }
+    g_gl_area = NULL;
+
+    g_print("[VideoWallpaper] Stopped and completely destroyed\n");
+    malloc_trim(0);
 }
 
 gboolean video_wallpaper_is_active(void)
@@ -249,7 +280,6 @@ void video_wallpaper_set_volume(int volume)
     char vs[16];
     snprintf(vs, sizeof(vs), "%d", volume);
 
-    /* Use mpv_set_property_string post-init */
     mpv_set_property_string(g_mpv, "volume", vs);
 
     ensure_config_dir();
@@ -260,43 +290,6 @@ void video_wallpaper_set_volume(int volume)
     g_key_file_save_to_file(kf, main_config, NULL);
     g_key_file_free(kf);
     g_free(main_config);
-}
-
-/*
- * video_wallpaper_draw:
- *   Called from on_layout_draw_bg() in wallpaper.c.
- *   Paints the current video frame onto the Cairo context.
- *   Returns TRUE if a frame was drawn, FALSE if no frame available yet.
- */
-gboolean video_wallpaper_draw(cairo_t *cr)
-{
-    if (!g_active || !g_frame_ready || !g_framebuf ||
-        g_framebuf_w <= 0 || g_framebuf_h <= 0)
-        return FALSE;
-
-    /*
-     * g_framebuf is in BGRX (32-bit, little-endian) format.
-     * CAIRO_FORMAT_RGB24 on x86 is stored as 0x00RRGGBB in a 32-bit word,
-     * which in memory (LE) is B, G, R, 0x00 — exactly matching "bgr0".
-     * So we can wrap the buffer directly with zero copy.
-     */
-    cairo_surface_t *surf = cairo_image_surface_create_for_data(
-        g_framebuf,
-        CAIRO_FORMAT_RGB24,
-        g_framebuf_w,
-        g_framebuf_h,
-        g_framebuf_w * 4   /* stride in bytes */
-    );
-
-    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-        cairo_surface_destroy(surf);
-        return FALSE;
-    }
-
-    cairo_set_source_surface(cr, surf, 0, 0);
-    cairo_paint(cr);
-    cairo_surface_destroy(surf);
-    return TRUE;
 }
 
 #else /* HAVE_MPV */
@@ -318,14 +311,14 @@ gboolean is_video_file(const char *path) {
     return ok;
 }
 
-gboolean video_wallpaper_init(GtkWidget *icon_layout) {
-    (void)icon_layout;
+gboolean video_wallpaper_init(GtkWidget *gl_area) {
+    (void)gl_area;
     g_warning("[VideoWallpaper] Video wallpaper support is disabled (compiled without libmpv-dev)");
     return FALSE;
 }
 
 void video_wallpaper_load(const char *path) {
-    g_warning("[VideoWallpaper] Cannot play '%s': Video wallpaper support is disabled (compiled without libmpv-dev)", path);
+    g_warning("[VideoWallpaper] Cannot play '%s': Video wallpaper support is disabled", path);
 }
 
 void video_wallpaper_stop(void) {
@@ -337,11 +330,6 @@ gboolean video_wallpaper_is_active(void) {
 
 void video_wallpaper_set_volume(int volume) {
     (void)volume;
-}
-
-gboolean video_wallpaper_draw(cairo_t *cr) {
-    (void)cr;
-    return FALSE;
 }
 
 #endif /* HAVE_MPV */

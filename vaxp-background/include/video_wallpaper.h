@@ -11,11 +11,11 @@
 
 /*
  * video_wallpaper_init:
- *   Initialise the mpv handle and SW render context.
- *   @icon_layout: the GtkLayout used as the desktop canvas.
+ *   Initialise the mpv handle and OpenGL render context.
+ *   @gl_area: the GtkGLArea used for rendering the video.
  *   Returns TRUE on success.
  */
-gboolean video_wallpaper_init(GtkWidget *icon_layout);
+gboolean video_wallpaper_init(GtkWidget *gl_area);
 
 /* Load and loop a video file as wallpaper. */
 void video_wallpaper_load(const char *path);
@@ -28,14 +28,6 @@ gboolean video_wallpaper_is_active(void);
 
 /* Set playback volume (0–100). */
 void video_wallpaper_set_volume(int volume);
-
-/*
- * video_wallpaper_draw:
- *   Paint the current video frame onto @cr.
- *   Call this from the layout's "draw" signal handler BEFORE drawing icons.
- *   Returns TRUE if a frame was painted, FALSE if no frame available.
- */
-gboolean video_wallpaper_draw(cairo_t *cr);
 
 /*
  * is_video_file:

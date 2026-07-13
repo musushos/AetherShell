@@ -21,4 +21,6 @@ void init_wallpaper_monitor(void);
 gboolean on_layout_draw_bg(GtkWidget *widget, cairo_t *cr, gpointer data);
 gboolean desktop_has_available_monitor(void);
 
+GtkWidget *wallpaper_get_widget(void);
+
 #endif /* WALLPAPER_H */

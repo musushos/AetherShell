@@ -10,7 +10,9 @@ layer_shell_dep = dependency('gtk-layer-shell-0')
 m_dep = cc.find_library('m', required : false)
 dl_dep = cc.find_library('dl', required : false)
 
-deps = [gtk_dep, gio_dep, layer_shell_dep, m_dep, dl_dep]
+epoxy_dep = dependency('epoxy')
+
+deps = [gtk_dep, gio_dep, layer_shell_dep, m_dep, dl_dep, epoxy_dep]
 
 mpv_dep = dependency('mpv', required : false)
 if mpv_dep.found()
@@ -26,6 +28,7 @@ inc = include_directories('include')
 # vaxp-background service
 bg_srcs = [
   'src/main.c',
+  'src/layer_manager.c',
   'src/wallpaper.c',
   'src/video_wallpaper.c',
   'src/desktop_config.c'

@@ -277,15 +277,15 @@ gboolean on_layout_draw_bg(GtkWidget *widget, cairo_t *cr, gpointer data) {
     (void)widget;
     (void)data;
 
+    /* If a video wallpaper is active, skip static image entirely to save CPU */
+    if (video_wallpaper_is_active()) {
+        return FALSE;
+    }
+
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-    /* If a video wallpaper is active, draw it and skip static image */
-    if (video_wallpaper_is_active()) {
-        video_wallpaper_draw(cr);
-        return FALSE;
-    }
     /* Static image wallpaper */
     if (wallpaper_pixbuf) {
         gdk_cairo_set_source_pixbuf(cr, wallpaper_pixbuf, 0, 0);
@@ -536,33 +536,18 @@ void init_main_window(void) {
         gtk_widget_set_app_paintable(main_window, TRUE);
     }
 
-    /* Create icon layout (desktop icons / menus layer) */
+    /* Create icon layout (desktop icons / menus layer / static wallpaper) */
     icon_layout = gtk_layout_new(NULL, NULL);
     gtk_widget_set_app_paintable(icon_layout, TRUE);
     gtk_widget_add_events(icon_layout,
         GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK);
-
-    if (!monitor_signal_handlers_connected) {
-        GdkDisplay *display = gdk_display_get_default();
-
-        if (display) {
-            g_signal_connect(display, "monitor-added", G_CALLBACK(on_monitors_changed), NULL);
-            g_signal_connect(display, "monitor-removed", G_CALLBACK(on_monitors_changed), NULL);
-            monitor_signal_handlers_connected = TRUE;
-        }
-    }
-
-    g_signal_connect(main_window, "realize", G_CALLBACK(on_main_window_realize), NULL);
+    gtk_widget_show(icon_layout);
+    
     g_signal_connect(icon_layout, "draw", G_CALLBACK(on_layout_draw_bg), NULL);
 
-    /*
-     * Initialise the video wallpaper subsystem (SW render — no GtkGLArea).
-     * If it fails we continue normally with static image wallpapers.
-     */
-    video_wallpaper_init(icon_layout);
-
-    gtk_container_add(GTK_CONTAINER(main_window), icon_layout);
     update_desktop_geometry();
 }
 
-
+GtkWidget *wallpaper_get_widget(void) {
+    return icon_layout;
+}
