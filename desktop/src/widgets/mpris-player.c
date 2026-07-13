@@ -268,6 +268,7 @@ static void rounded_rect(cairo_t *cr,
 
 /* Album art */
 static gboolean on_draw_art(GtkWidget *w, cairo_t *cr, gpointer d) {
+    (void)d;
     int width  = gtk_widget_get_allocated_width(w);
     int height = gtk_widget_get_allocated_height(w);
 
@@ -324,6 +325,7 @@ static gboolean on_draw_art(GtkWidget *w, cairo_t *cr, gpointer d) {
 
 /* Custom seek / progress bar */
 static gboolean on_draw_progress(GtkWidget *w, cairo_t *cr, gpointer d) {
+    (void)d;
     int width  = gtk_widget_get_allocated_width(w);
     int height = gtk_widget_get_allocated_height(w);
     double cy     = height / 2.0;
@@ -362,6 +364,7 @@ static gboolean on_draw_progress(GtkWidget *w, cairo_t *cr, gpointer d) {
 
 /* Seek interaction */
 static gboolean on_progress_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
+    (void)d;
     if (ev->button != 1) return FALSE;
     S.seeking   = TRUE;
     S.seek_frac = CLAMP(ev->x / gtk_widget_get_allocated_width(w), 0.0, 1.0);
@@ -369,12 +372,14 @@ static gboolean on_progress_press(GtkWidget *w, GdkEventButton *ev, gpointer d) 
     return TRUE;
 }
 static gboolean on_progress_motion(GtkWidget *w, GdkEventMotion *ev, gpointer d) {
+    (void)d;
     if (!S.seeking) return FALSE;
     S.seek_frac = CLAMP(ev->x / gtk_widget_get_allocated_width(w), 0.0, 1.0);
     gtk_widget_queue_draw(w);
     return TRUE;
 }
 static gboolean on_progress_release(GtkWidget *w, GdkEventButton *ev, gpointer d) {
+    (void)d;
     if (ev->button != 1 || !S.seeking) return FALSE;
     S.seek_frac = CLAMP(ev->x / gtk_widget_get_allocated_width(w), 0.0, 1.0);
     S.seeking   = FALSE;
@@ -386,17 +391,19 @@ static gboolean on_progress_release(GtkWidget *w, GdkEventButton *ev, gpointer d
 /* ══════════════════════════════════════════════
    Button callbacks
    ══════════════════════════════════════════════ */
-static void on_prev   (GtkButton *b, gpointer d) { mpris_call("Previous"); }
-static void on_play   (GtkButton *b, gpointer d) { mpris_call("PlayPause"); }
-static void on_next   (GtkButton *b, gpointer d) { mpris_call("Next"); }
+static void on_prev   (GtkButton *b, gpointer d) { (void)b; (void)d; mpris_call("Previous"); }
+static void on_play   (GtkButton *b, gpointer d) { (void)b; (void)d; mpris_call("PlayPause"); }
+static void on_next   (GtkButton *b, gpointer d) { (void)b; (void)d; mpris_call("Next"); }
 
 static void on_shuffle(GtkButton *b, gpointer d) {
+    (void)d;
     S.shuffle = !S.shuffle;
     mpris_set_bool_prop("Shuffle", S.shuffle);
     gtk_widget_set_opacity(GTK_WIDGET(b), S.shuffle ? 1.0 : 0.40);
 }
 
 static void on_repeat(GtkButton *b, gpointer d) {
+    (void)d;
     S.loop_status = (S.loop_status + 1) % 3;
     const gchar *modes[] = {"None", "Track", "Playlist"};
     const gchar *icons[] = {"🔁",   "🔂",    "🔁"};
@@ -407,6 +414,7 @@ static void on_repeat(GtkButton *b, gpointer d) {
 
 /* Volume: PulseAudio preferred, MPRIS fallback */
 static void on_volume_changed(GtkRange *range, gpointer d) {
+    (void)d;
     gdouble val = gtk_range_get_value(range);
     if (S.pa_available) {
         S.pa_volume = (gint)(val * 100.0);
@@ -429,6 +437,7 @@ static void on_volume_changed(GtkRange *range, gpointer d) {
    MPRIS polling  (every 2 s)
    ══════════════════════════════════════════════ */
 static gboolean poll_mpris(gpointer data) {
+    (void)data;
     gchar *svc = find_mpris_service();
     if (!svc) {
         if (S.service) { g_free(S.service); S.service = NULL; }
@@ -524,9 +533,9 @@ static gboolean poll_mpris(gpointer data) {
     if (!S.seeking) {
         gint64 ps = S.position_us / 1000000;
         gint64 ls = S.length_us   / 1000000;
-        char el[16], to[16];
-        snprintf(el, sizeof(el), "%02ld:%02ld", ps/60, ps%60);
-        snprintf(to, sizeof(to), "%02ld:%02ld", ls/60, ls%60);
+        char el[32], to[32];
+        snprintf(el, sizeof(el), "%02ld:%02ld", (long)(ps/60), (long)(ps%60));
+        snprintf(to, sizeof(to), "%02ld:%02ld", (long)(ls/60), (long)(ls%60));
         gtk_label_set_text(GTK_LABEL(S.lbl_elapsed), el);
         gtk_label_set_text(GTK_LABEL(S.lbl_total),   to);
         gtk_widget_queue_draw(S.progress_area);
@@ -552,6 +561,7 @@ static gboolean poll_mpris(gpointer data) {
    Drag & Drop
    ══════════════════════════════════════════════ */
 static gboolean on_card_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
+    (void)d;
     if (ev->button != 1) return FALSE;
     S.dragging = TRUE;
     S.drag_rx  = ev->x_root; S.drag_ry = ev->y_root;
@@ -561,6 +571,7 @@ static gboolean on_card_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
     return TRUE;
 }
 static gboolean on_card_motion(GtkWidget *w, GdkEventMotion *ev, gpointer d) {
+    (void)d;
     if (!S.dragging || !S.api || !S.api->layout_container) return FALSE;
     GtkWidget *target = w;
     while (target && gtk_widget_get_parent(target) != S.api->layout_container) {
@@ -574,6 +585,7 @@ static gboolean on_card_motion(GtkWidget *w, GdkEventMotion *ev, gpointer d) {
     return TRUE;
 }
 static gboolean on_card_release(GtkWidget *w, GdkEventButton *ev, gpointer d) {
+    (void)d;
     if (ev->button != 1 || !S.dragging) return FALSE;
     S.dragging = FALSE;
     if (S.api && S.api->save_position && S.api->layout_container) {

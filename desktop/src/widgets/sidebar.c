@@ -38,6 +38,7 @@ static GtkWidget *lbl_time = NULL;
 static GtkWidget *lbl_date = NULL;
 
 static gboolean update_clock(gpointer _) {
+    (void)_;
     if (!lbl_time || !lbl_date) return FALSE;
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
@@ -134,11 +135,13 @@ static void rebuild_calendar(void) {
 }
 
 static void on_prev_month(GtkWidget *w, gpointer d) {
+    (void)w; (void)d;
     if (--view_month < 0) { view_month=11; view_year--; } rebuild_calendar(); }
 static void on_next_month(GtkWidget *w, gpointer d) {
+    (void)w; (void)d;
     if (++view_month > 11){ view_month=0;  view_year++; } rebuild_calendar(); }
-static void on_prev_year (GtkWidget *w, gpointer d) { view_year--; rebuild_calendar(); }
-static void on_next_year (GtkWidget *w, gpointer d) { view_year++; rebuild_calendar(); }
+static void on_prev_year (GtkWidget *w, gpointer d) { (void)w; (void)d; view_year--; rebuild_calendar(); }
+static void on_next_year (GtkWidget *w, gpointer d) { (void)w; (void)d; view_year++; rebuild_calendar(); }
 
 /* ═══════════════════════════════════════════════════════════════════
    SECTION 3 — SYSTEM INFO
@@ -199,6 +202,7 @@ static char* get_packages(void) {
 }
 
 static gboolean refresh_sysinfo(gpointer _) {
+    (void)_;
     if (lbl_uptime)   { char *u=get_uptime_str(); gtk_label_set_text(GTK_LABEL(lbl_uptime),u);   g_free(u); }
     if (lbl_packages) { char *p=get_packages();   gtk_label_set_text(GTK_LABEL(lbl_packages),p); g_free(p); }
     return TRUE;
@@ -318,6 +322,7 @@ static void rrect(cairo_t *cr, double x, double y, double w, double h, double r)
 }
 
 static gboolean on_draw_ram_bar(GtkWidget *w, cairo_t *cr, gpointer _) {
+    (void)_;
     int W = gtk_widget_get_allocated_width(w);
     int H = gtk_widget_get_allocated_height(w);
     double pct = ram_total_kb > 0 ? CLAMP((double)ram_used_kb / ram_total_kb, 0.0, 1.0) : 0.0;
@@ -348,6 +353,7 @@ static gboolean on_draw_ram_bar(GtkWidget *w, cairo_t *cr, gpointer _) {
 }
 
 static gboolean on_draw_disk_bar(GtkWidget *w, cairo_t *cr, gpointer _) {
+    (void)_;
     int W = gtk_widget_get_allocated_width(w);
     int H = gtk_widget_get_allocated_height(w);
     double pct = disk_total_gb > 0 ? CLAMP((double)disk_used_gb / disk_total_gb, 0.0, 1.0) : 0.0;
@@ -374,6 +380,7 @@ static gboolean on_draw_disk_bar(GtkWidget *w, cairo_t *cr, gpointer _) {
 }
 
 static gboolean on_draw_vram_bar(GtkWidget *w, cairo_t *cr, gpointer _) {
+    (void)_;
     int W = gtk_widget_get_allocated_width(w);
     int H = gtk_widget_get_allocated_height(w);
     double pct = vram_total_mb > 0 ? CLAMP(vram_used_mb / vram_total_mb, 0.0, 1.0) : 0.0;
@@ -400,6 +407,7 @@ static gboolean on_draw_vram_bar(GtkWidget *w, cairo_t *cr, gpointer _) {
 }
 
 static gboolean update_storage(gpointer _) {
+    (void)_;
     read_ram_usage();
     read_disk_usage();
     read_vram_usage();
@@ -486,6 +494,7 @@ static gboolean read_net(guint64 *rx, guint64 *tx) {
 }
 
 static gboolean sample_net(gpointer _) {
+    (void)_;
     guint64 rx,tx;
     if (!read_net(&rx,&tx)) return TRUE;
     if (!net_first) {
@@ -528,6 +537,7 @@ static void draw_spark(cairo_t *cr, double *hist, int n, int cur,
 }
 
 static gboolean on_net_draw(GtkWidget *w, cairo_t *cr, gpointer _) {
+    (void)_;
     int W=gtk_widget_get_allocated_width(w);
     int H=gtk_widget_get_allocated_height(w);
     cairo_set_source_rgba(cr,0,0,0,0); cairo_paint(cr);
@@ -638,6 +648,7 @@ static double get_gpu_usage_norm(void) {
 }
 
 static gboolean update_gauges(gpointer _) {
+    (void)_;
     double cpu=get_cpu_pct(), ram=get_ram_pct();
     rings[0].val=cpu; snprintf(rings[0].label,sizeof(rings[0].label),"%.0f%%",cpu*100);
     rings[1].val=get_cputemp_norm();
@@ -687,6 +698,7 @@ static void draw_one_ring(cairo_t *cr, double cx, double cy,
 }
 
 static gboolean on_gauge_draw(GtkWidget *w, cairo_t *cr, gpointer _) {
+    (void)_;
     int W=gtk_widget_get_allocated_width(w);
     cairo_set_source_rgba(cr,0,0,0,0); cairo_paint(cr);
     double cw=W/2.0, ch=68.0;
@@ -795,6 +807,7 @@ static void set_theme(const char *hex_color, double opacity) {
 }
 
 static gboolean on_press(GtkWidget *w, GdkEventButton *e, gpointer _) {
+    (void)_;
     if (e->button!=1) return FALSE;
     is_drag=TRUE; dsx=e->x_root; dsy=e->y_root;
     gint wx,wy;
@@ -802,6 +815,7 @@ static gboolean on_press(GtkWidget *w, GdkEventButton *e, gpointer _) {
     wsx=wx; wsy=wy; return TRUE;
 }
 static gboolean on_motion(GtkWidget *w, GdkEventMotion *e, gpointer _) {
+    (void)_;
     if(!is_drag||!g_api||!g_api->layout_container) return FALSE;
     GtkWidget *target = w;
     while (target && gtk_widget_get_parent(target) != g_api->layout_container) {
@@ -814,6 +828,7 @@ static gboolean on_motion(GtkWidget *w, GdkEventMotion *e, gpointer _) {
     return TRUE;
 }
 static gboolean on_release(GtkWidget *w, GdkEventButton *e, gpointer _) {
+    (void)_;
     if(e->button!=1||!is_drag) return FALSE;
     is_drag=FALSE;
     if(g_api&&g_api->save_position){

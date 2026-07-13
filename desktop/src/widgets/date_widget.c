@@ -24,6 +24,7 @@ static WidgetState S;
    Drag & Drop
    ══════════════════════════════════════════════ */
 static gboolean on_card_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
+    (void)d;
     if (ev->button != 1) return FALSE;
     S.dragging = TRUE;
     S.drag_rx  = ev->x_root; S.drag_ry = ev->y_root;
@@ -34,6 +35,7 @@ static gboolean on_card_press(GtkWidget *w, GdkEventButton *ev, gpointer d) {
 }
 
 static gboolean on_card_motion(GtkWidget *w, GdkEventMotion *ev, gpointer d) {
+    (void)d;
     if (!S.dragging || !S.api || !S.api->layout_container) return FALSE;
     GtkWidget *target = w;
     while (target && gtk_widget_get_parent(target) != S.api->layout_container) {
@@ -48,6 +50,7 @@ static gboolean on_card_motion(GtkWidget *w, GdkEventMotion *ev, gpointer d) {
 }
 
 static gboolean on_card_release(GtkWidget *w, GdkEventButton *ev, gpointer d) {
+    (void)d;
     if (ev->button != 1 || !S.dragging) return FALSE;
     S.dragging = FALSE;
     if (S.api && S.api->save_position && S.api->layout_container) {
@@ -149,6 +152,7 @@ static void draw_letter(cairo_t *cr, char c) {
 }
 
 static gboolean on_draw_day(GtkWidget *w, cairo_t *cr, gpointer d) {
+    (void)d;
     int width = gtk_widget_get_allocated_width(w);
     int height = gtk_widget_get_allocated_height(w);
 
@@ -203,6 +207,7 @@ static gboolean on_draw_day(GtkWidget *w, cairo_t *cr, gpointer d) {
    Date Polling
    ══════════════════════════════════════════════ */
 static gboolean poll_date(gpointer data) {
+    (void)data;
     time_t rawtime;
     struct tm *info;
 
